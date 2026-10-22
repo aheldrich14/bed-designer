@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "note": "Drift patterns are fractions of the bed: u runs end to end along the bed, v runs from the back (0, against the house) to the front edge (1). Each slot is filled with the best library plant for the bed's conditions, preferring the listed codes.",
+  "templates": [
+    {
+      "id": "hot-dry-foundation",
+      "name": "Hot dry foundation bed",
+      "description": "Three height tiers against a sunny wall: grasses and late bloomers at the back, a mixed middle, and a tough low edge.",
+      "fits": { "sun": ["full"], "moisture": ["dry", "medium"] },
+      "rows": [
+        { "zone": "Back", "v": [0, 0.38], "skew": 0.06, "breaks": [0.3, 0.66],
+          "slots": [
+            { "tier": "mid", "kind": "grass", "prefer": ["SCH-SCO", "BOU-CUR"] },
+            { "tier": "tall", "kind": "bloom", "season": "summer", "prefer": ["RAT-PIN", "HEL-HEL", "MON-FIS"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["SOL-SPE", "SYM-OOL", "OLI-RIG"] }
+          ] },
+        { "zone": "Middle", "v": [0.38, 0.7], "skew": -0.06, "breaks": [0.22, 0.5, 0.78],
+          "slots": [
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["ASC-TUB", "LIA-ASP"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["LIA-ASP", "SYM-LAE"] },
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["MON-FIS", "TRA-OHI"] },
+            { "tier": "mid", "kind": "grass", "prefer": ["SPO-HET"] }
+          ] },
+        { "zone": "Front edge", "v": [0.7, 1], "skew": 0.05, "breaks": [0.34, 0.66],
+          "slots": [
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["GEU-TRI", "PEN-HIR"] },
+            { "tier": "low", "kind": "bloom", "season": "summer", "prefer": ["ALL-CER", "COR-LAN"] },
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["PEN-HIR", "ANT-PLA"] }
+          ] }
+      ]
+    },
+    {
+      "id": "shady-pocket",
+      "name": "Shady pocket under a tree",
+      "description": "Ferns and woodland perennials in loose layers with a sedge carpet at the front.",
+      "fits": { "sun": ["part", "shade"], "moisture": ["dry", "medium", "wet"] },
+      "rows": [
+        { "zone": "Back", "v": [0, 0.45], "skew": 0.07, "breaks": [0.35, 0.7],
+          "slots": [
+            { "tier": "mid", "kind": "fern", "prefer": ["DRY-MAR", "ATH-FIL", "POL-ACR"] },
+            { "tier": "mid", "kind": "bloom", "season": "spring", "prefer": ["POL-BIF", "MAI-RAC"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["SOL-CAE", "SYM-COR", "EUR-MAC"] }
+          ] },
+        { "zone": "Middle", "v": [0.45, 0.75], "skew": -0.06, "breaks": [0.33, 0.66],
+          "slots": [
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["GER-MAC", "AQU-CAN"] },
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["PHL-DIV", "POL-REP", "MER-VIR"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["EUR-MAC", "SOL-FLE"] }
+          ] },
+        { "zone": "Front edge", "v": [0.75, 1], "skew": 0.04, "breaks": [0.5],
+          "slots": [
+            { "tier": "low", "kind": "groundcover", "prefer": ["CAR-PEN", "ASA-CAN", "GEU-FRA"] },
+            { "tier": "low", "kind": "groundcover", "prefer": ["ASA-CAN", "PAC-AUR", "CAR-ROS"] }
+          ] }
+      ]
+    },
+    {
+      "id": "pollinator-border",
+      "name": "Pollinator border",
+      "description": "Continuous bloom from May to October in big, readable drifts.",
+      "fits": { "sun": ["full", "part"], "moisture": ["medium", "wet", "dry"] },
+      "rows": [
+        { "zone": "Back", "v": [0, 0.4], "skew": 0.07, "breaks": [0.25, 0.5, 0.75],
+          "slots": [
+            { "tier": "tall", "kind": "bloom", "season": "fall", "prefer": ["SYM-NOV", "SOL-SPE"] },
+            { "tier": "tall", "kind": "bloom", "season": "summer", "prefer": ["EUT-MAC", "HEL-HEL", "VER-HAS"] },
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["MON-FIS", "ASC-INC"] },
+            { "tier": "tall", "kind": "bloom", "season": "fall", "prefer": ["SOL-SPE", "SYM-LAE"] }
+          ] },
+        { "zone": "Middle", "v": [0.4, 0.72], "skew": -0.06, "breaks": [0.33, 0.66],
+          "slots": [
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["PYC-VIR", "LIA-SPI", "ASC-TUB"] },
+            { "tier": "mid", "kind": "bloom", "season": "spring", "prefer": ["PEN-DIG", "ZIZ-AUR"] },
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["LIA-SPI", "RUD-FUL", "LOB-SIP"] }
+          ] },
+        { "zone": "Front edge", "v": [0.72, 1], "skew": 0.05, "breaks": [0.3, 0.7],
+          "slots": [
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["AQU-CAN", "ZIZ-AUR", "GEU-TRI"] },
+            { "tier": "low", "kind": "grass", "prefer": ["SPO-HET", "CAR-PEN"] },
+            { "tier": "low", "kind": "bloom", "season": "summer", "prefer": ["ALL-CER", "COR-LAN", "CAM-ROT"] }
+          ] }
+      ]
+    },
+    {
+      "id": "low-walk-edge",
+      "name": "Low edge along a walk",
+      "description": "Nothing over knee height: a neat, walkable border that stays off the path.",
+      "fits": { "sun": ["full", "part"], "moisture": ["dry", "medium"] },
+      "rows": [
+        { "zone": "Back", "v": [0, 0.5], "skew": 0.08, "breaks": [0.33, 0.66],
+          "slots": [
+            { "tier": "mid", "kind": "grass", "prefer": ["SPO-HET", "SCH-SCO"] },
+            { "tier": "low", "kind": "bloom", "season": "summer", "prefer": ["ALL-CER", "COR-LAN", "HEU-RIC"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["SOL-NEM", "SYM-OOL"] }
+          ] },
+        { "zone": "Front edge", "v": [0.5, 1], "skew": -0.06, "breaks": [0.25, 0.5, 0.75],
+          "slots": [
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["PEN-HIR", "GEU-TRI"] },
+            { "tier": "low", "kind": "groundcover", "prefer": ["FRA-VIR", "ANT-PLA", "CAR-PEN"] },
+            { "tier": "low", "kind": "bloom", "season": "summer", "prefer": ["CAM-ROT", "ALL-CER"] },
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["GEU-TRI", "AQU-CAN"] }
+          ] }
+      ]
+    },
+    {
+      "id": "rain-garden",
+      "name": "Rain garden low spot",
+      "description": "Wet-tolerant plants in the basin, drier plants on the rim.",
+      "fits": { "sun": ["full", "part"], "moisture": ["wet", "medium"] },
+      "rows": [
+        { "zone": "Back rim", "v": [0, 0.35], "skew": 0.06, "breaks": [0.5],
+          "slots": [
+            { "tier": "tall", "kind": "bloom", "season": "summer", "prefer": ["EUT-MAC", "VER-HAS"] },
+            { "tier": "tall", "kind": "bloom", "season": "fall", "prefer": ["SYM-NOV"] }
+          ] },
+        { "zone": "Basin", "v": [0.35, 0.7], "skew": -0.06, "breaks": [0.33, 0.66],
+          "slots": [
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["ASC-INC", "LOB-CAR"] },
+            { "tier": "mid", "kind": "grass", "prefer": ["CAR-VUL"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["CHE-GLA", "LOB-SIP"] }
+          ] },
+        { "zone": "Front rim", "v": [0.7, 1], "skew": 0.05, "breaks": [0.5],
+          "slots": [
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["ZIZ-AUR", "IRI-VIR"] },
+            { "tier": "low", "kind": "bloom", "season": "summer", "prefer": ["PYC-VIR", "ALL-CER"] }
+          ] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "staggerFactor": 1.15,
+  "tiers": [
+    { "id": "low", "label": "Low (front)", "maxHeightIn": 18 },
+    { "id": "mid", "label": "Mid", "maxHeightIn": 36 },
+    { "id": "tall", "label": "Tall (back)", "maxHeightIn": 999 }
+  ],
+  "minDriftCount": 3,
+  "preferredDriftCount": 5,
+  "heightOrderToleranceIn": 8,
+  "bloomWindow": [4, 10],
+  "bloomRegions": 3,
+  "maxSpeciesPer100SqFt": 7,
+  "maxUnplantedFraction": 0.25,
+  "maxOverlapFraction": 0.15,
+  "maxOutsideFraction": 0.2,
+  "maxBloomColorsPerMonth": 5,
+  "defaultSize": "plug",
+  "sizeForTypes": { "shrub": "1gal", "fern": "1gal" }
+}
