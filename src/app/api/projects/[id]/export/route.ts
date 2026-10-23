@@ -5,12 +5,12 @@ import { plantListCsv } from "@/lib/export/csv";
 /** Plant list CSV across every bed in the project (latest version of each). */
 export const GET = route<Params<{ id: string }>>(async (_req, { params }) => {
   const { id } = await params;
-  const project = repo.getProject(id);
+  const project = await repo.getProject(id);
   if (!project) throw notFound("Project");
-  const items = repo.listBeds(id).flatMap((bed) => {
-    const plan = repo.latestVersion(bed.id);
-    return plan ? [{ bed, plan }] : [];
-  });
+  const beds = await repo.listBeds(id);
+  const items = (await Promise.all(beds.map(async (bed) => ({ bed, plan: await repo.latestVersion(bed.id) })))).flatMap(
+    ({ bed, plan }) => (plan ? [{ bed, plan }] : []),
+  );
   return new Response(plantListCsv(items), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

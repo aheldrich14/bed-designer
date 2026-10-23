@@ -12,8 +12,8 @@ const NewBedZ = z.object({
 
 export const POST = route<Params<{ id: string }>>(async (req, { params }) => {
   const { id } = await params;
-  if (!repo.getProject(id)) throw notFound("Project");
+  if (!await repo.getProject(id)) throw notFound("Project");
   const input = await body(req, NewBedZ);
-  const bed = repo.createBed(id, { ...input, conditions: { ...repo.DEFAULT_CONDITIONS, ...input.conditions } });
+  const bed = await repo.createBed(id, { ...input, conditions: { ...repo.DEFAULT_CONDITIONS, ...input.conditions } });
   return json({ bed }, { status: 201 });
 });

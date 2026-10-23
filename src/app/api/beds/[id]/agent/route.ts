@@ -9,5 +9,5 @@ const AnswersZ = z.object({
 export const PATCH = route<Params<{ id: string }>>(async (req, { params }) => {
   const { id } = await params;
   const { answers } = await body(req, AnswersZ);
-  return json({ session: answerChecklist(id, answers) });
+  return json({ session: await answerChecklist(id, answers) });
 });

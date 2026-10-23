@@ -4,9 +4,9 @@ import type {
   SiteFeature, Zone,
 } from "../types";
 
-// Nested geometry and lists are stored as JSON text; the data-access layer in
-// repo.ts is the only code that touches these tables, so the store can move to
-// Postgres (e.g. Supabase) without the rest of the app changing.
+// SQLite schema. Nested geometry and lists are stored as JSON text. The
+// Supabase backend mirrors it in supabase/migrations (jsonb, prefixed names);
+// keep the two in step.
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),

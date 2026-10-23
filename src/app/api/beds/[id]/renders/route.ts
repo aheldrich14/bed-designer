@@ -12,11 +12,11 @@ export const maxDuration = 300;
 export const GET = route<P>(async (req, { params }) => {
   const { id } = await params;
   const url = new URL(req.url);
-  const bed = requireBed(id);
-  const version = requireVersion(id, url.searchParams.get("version"));
+  const bed = await requireBed(id);
+  const version = await requireVersion(id, url.searchParams.get("version"));
   const month = Number(url.searchParams.get("month") ?? 7);
   const viewpoint = url.searchParams.get("viewpoint") === "overhead" ? "overhead" : "street";
-  return json({ renders: repo.listRenders(version.id), prompt: buildRenderPrompt(bed, version, month, viewpoint) });
+  return json({ renders: await repo.listRenders(version.id), prompt: buildRenderPrompt(bed, version, month, viewpoint) });
 });
 
 export const POST = route<P>(async (req, { params }) => {

@@ -6,7 +6,7 @@ import { extFor, fileStore } from "@/lib/storage";
 
 export const POST = route<Params<{ id: string }>>(async (req, { params }) => {
   const { id } = await params;
-  const bed = requireBed(id);
+  const bed = await requireBed(id);
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) throw new HttpError(400, "Attach an image as 'file'.");
@@ -14,5 +14,5 @@ export const POST = route<Params<{ id: string }>>(async (req, { params }) => {
   const isStreetView = form.get("street") === "true" || !bed.photos.some((p) => p.isStreetView);
   const photo = { id: newId("ph_"), url, caption: String(form.get("caption") ?? file.name), isStreetView };
   const photos = [...bed.photos.map((p) => (isStreetView ? { ...p, isStreetView: false } : p)), photo];
-  return json({ bed: repo.updateBed(id, { photos }) });
+  return json({ bed: await repo.updateBed(id, { photos }) });
 });

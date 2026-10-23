@@ -19,8 +19,25 @@ Everything works without keys: the agent draft and design review fall back to a 
 | `PLANNER` | Force `heuristic` or `claude` | auto |
 | `GEMINI_API_KEY` | Month renders with Gemini image editing | prompt preview only |
 | `GEMINI_IMAGE_MODEL` | Gemini image model | `gemini-2.5-flash-image` |
+| `DB_BACKEND` | `sqlite` or `supabase` for data and uploaded files | `supabase` if `SUPABASE_URL` and a secret key are set, else `sqlite` |
 | `DATA_DIR` | SQLite db, uploaded aerials and photos, cached renders | `./var`, or the OS temp folder if that isn't writable |
+| `SUPABASE_URL` | Supabase project URL | none |
+| `SUPABASE_SECRET_KEY` | Server-only secret key (`SUPABASE_SERVICE_ROLE_KEY` also works) | none |
+| `SUPABASE_TABLE_PREFIX` | Prefix for the app's tables in a shared project | `bed_planner_` |
+| `SUPABASE_BUCKET` | Private storage bucket for uploads and renders | `bed-planner` |
 | `APP_PASSWORD` | Password for every page and API route (any username). Required on Vercel. | none locally |
+
+## Storage backends
+
+The app runs on **SQLite** (a local file, the default) or **Supabase** (Postgres + Storage). Switch with `DB_BACKEND=sqlite|supabase`; the rest of the app doesn't change.
+
+Vercel's disk is temporary, so deploy with Supabase. It shares an existing project: every table is prefixed `bed_planner_` and files live in a private `bed-planner` bucket.
+
+1. In your Supabase project, open the SQL editor and run `supabase/migrations/20261023000000_bed_planner.sql` (safe to re-run).
+2. Copy the project URL and a secret key (Project Settings → API Keys) into `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in Vercel (and `.env.local` to try it locally).
+3. Redeploy. To go back to SQLite, set `DB_BACKEND=sqlite` or remove the Supabase variables.
+
+The secret key bypasses row level security and is only used on the server. The tables have RLS on with no policies, so the public key can't read them. Data doesn't migrate between backends automatically.
 
 ## Workflow
 
@@ -40,7 +57,7 @@ Everything works without keys: the agent draft and design review fall back to a 
 
 - **Next.js App Router + React**, plan drawn as SVG. `src/lib/sheet.ts` builds a plan sheet as drawing primitives once; React renders them on screen and `src/lib/export/svg.ts` renders the same primitives to an SVG string for the PDF. One plan JSON feeds every output.
 - **State**: Zustand editor store with snapshot undo/redo (`src/store/editor.ts`).
-- **Data**: SQLite via Drizzle (`src/lib/db`). `repo.ts` is the only module that knows about tables, so the store can move to Postgres/Supabase later. Projects carry a nullable `userId`. Uploaded files sit behind a `FileStore` interface (`src/lib/storage.ts`).
+- **Data**: `src/lib/db/repo.ts` is the only module the app uses for persistence. It delegates to a `Backend` (`backend.ts`): SQLite via Drizzle (`sqlite.ts`) or Supabase via `supabase-js` (`supabase.ts`, tables in `supabase/migrations`). Projects carry a nullable `userId`. Uploaded files sit behind a `FileStore` interface (`src/lib/storage.ts`): local disk or Supabase Storage, always served through `/api/files/...`.
 - **Geometry** (`src/lib/geometry.ts`): feet relative to each bed's origin, x east and y south. Shoelace area, Chaikin smoothing for curves, polygon clipping. Drift count = area / spacing² × 1.15 for staggered rows.
 - **Plant library**: `data/plants.json` (72 Southeast Michigan natives) behind the `PlantLibrary` interface in `src/lib/plants`.
 - **Design rules**: `data/design-rules.json` (tier heights, drift sizes, bloom window, overlap and coverage thresholds), not hard-coded.

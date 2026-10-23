@@ -8,25 +8,27 @@ type P = Params<{ id: string }>;
 
 export const GET = route<P>(async (_req, { params }) => {
   const { id } = await params;
-  const project = repo.getProject(id);
+  const project = await repo.getProject(id);
   if (!project) throw notFound("Project");
-  const beds = repo.listBeds(id).map((bed) => {
-    const v = repo.latestVersion(bed.id);
-    return { ...bed, areaSqFt: shapeArea(bed.outline), plants: v ? totalPlants(v) : 0, versionCount: v?.seq ?? 0 };
-  });
+  const beds = await Promise.all(
+    (await repo.listBeds(id)).map(async (bed) => {
+      const v = await repo.latestVersion(bed.id);
+      return { ...bed, areaSqFt: shapeArea(bed.outline), plants: v ? totalPlants(v) : 0, versionCount: v?.seq ?? 0 };
+    }),
+  );
   return json({ project, beds });
 });
 
 export const PATCH = route<P>(async (req, { params }) => {
   const { id } = await params;
   const patch = await body(req, ProjectPatchZ);
-  const project = repo.updateProject(id, patch);
+  const project = await repo.updateProject(id, patch);
   if (!project) throw notFound("Project");
   return json({ project });
 });
 
 export const DELETE = route<P>(async (_req, { params }) => {
   const { id } = await params;
-  repo.deleteProject(id);
+  await repo.deleteProject(id);
   return json({ ok: true });
 });

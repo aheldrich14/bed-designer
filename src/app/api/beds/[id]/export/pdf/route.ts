@@ -5,9 +5,9 @@ import { requireBed, requireVersion, versionLabel } from "@/lib/services";
 
 export const GET = route<Params<{ id: string }>>(async (req, { params }) => {
   const { id } = await params;
-  const bed = requireBed(id);
-  const version = requireVersion(id, new URL(req.url).searchParams.get("version"));
-  const project = repo.getProject(bed.projectId)!;
+  const bed = await requireBed(id);
+  const version = await requireVersion(id, new URL(req.url).searchParams.get("version"));
+  const project = (await repo.getProject(bed.projectId))!;
   const pdf = await planSheetPdf(project, bed, version, versionLabel(version));
   return new Response(new Uint8Array(pdf), {
     headers: {

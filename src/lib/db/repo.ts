@@ -1,12 +1,32 @@
-import { and, desc, eq, inArray, max } from "drizzle-orm";
-import { getDb } from "./client";
-import * as t from "./schema";
 import { newId } from "../plan";
+import { supabaseConfig } from "../supabase";
+import type { Backend, NewSuggestion, VersionRow, VersionSummary } from "./backend";
 import type {
-  AgentSession, Bed, Conditions, Plan, PlanAuthor, PlanVersion, Project, Render, Suggestion,
+  AgentSession, Bed, Conditions, Plan, PlanAuthor, Project, Render, Suggestion,
 } from "../types";
 
-// The data-access layer: the only module that knows about tables.
+// The data-access layer: the only module the app uses for persistence. The
+// storage itself is a Backend: SQLite (default) or Supabase, chosen by
+// DB_BACKEND=sqlite|supabase (default: supabase when its env vars are set).
+
+export type DbBackendName = "sqlite" | "supabase";
+
+export function backendName(): DbBackendName {
+  const forced = process.env.DB_BACKEND?.toLowerCase();
+  if (forced === "sqlite" || forced === "supabase") return forced;
+  return supabaseConfig() ? "supabase" : "sqlite";
+}
+
+let cached: Promise<Backend> | null = null;
+
+/** Loaded lazily so the Supabase build never touches the native SQLite module. */
+function db(): Promise<Backend> {
+  cached ??=
+    backendName() === "supabase"
+      ? import("./supabase").then((m) => m.supabaseBackend)
+      : import("./sqlite").then((m) => m.sqliteBackend);
+  return cached;
+}
 
 const now = () => new Date().toISOString();
 
@@ -16,53 +36,42 @@ export const DEFAULT_CONDITIONS: Conditions = {
 
 // ---- Projects -----------------------------------------------------------------
 
-export function listProjects(): (Project & { bedCount: number })[] {
-  const db = getDb();
-  const rows = db.select().from(t.projects).orderBy(desc(t.projects.createdAt)).all();
-  const bedRows = db.select({ projectId: t.beds.projectId }).from(t.beds).all();
-  return rows.map((p) => ({
-    ...toProject(p),
-    bedCount: bedRows.filter((b) => b.projectId === p.id).length,
-  }));
+export async function listProjects(): Promise<(Project & { bedCount: number })[]> {
+  return (await db()).listProjects();
 }
 
-export function getProject(id: string): Project | null {
-  const row = getDb().select().from(t.projects).where(eq(t.projects.id, id)).get();
-  return row ? toProject(row) : null;
+export async function getProject(id: string): Promise<Project | null> {
+  return (await db()).getProject(id);
 }
 
-export function createProject(name: string): Project {
+export async function createProject(name: string): Promise<Project> {
   const p: Project = {
     id: newId("p_"), name, aerialUrl: null, aerialSize: null, calibration: null, features: [], userId: null, createdAt: now(),
   };
-  getDb().insert(t.projects).values(p).run();
+  await (await db()).insertProject(p);
   return p;
 }
 
-export function updateProject(id: string, patch: Partial<Omit<Project, "id" | "createdAt">>): Project | null {
-  getDb().update(t.projects).set(patch).where(eq(t.projects.id, id)).run();
+export async function updateProject(id: string, patch: Partial<Omit<Project, "id" | "createdAt">>): Promise<Project | null> {
+  await (await db()).updateProject(id, patch);
   return getProject(id);
 }
 
-export function deleteProject(id: string) {
-  getDb().delete(t.projects).where(eq(t.projects.id, id)).run();
-}
-
-function toProject(r: typeof t.projects.$inferSelect): Project {
-  return { ...r, features: r.features ?? [], aerialSize: r.aerialSize ?? null, calibration: r.calibration ?? null };
+export async function deleteProject(id: string) {
+  await (await db()).deleteProject(id);
 }
 
 // ---- Beds ---------------------------------------------------------------------
 
-export function listBeds(projectId: string): Bed[] {
-  return getDb().select().from(t.beds).where(eq(t.beds.projectId, projectId)).orderBy(t.beds.createdAt).all();
+export async function listBeds(projectId: string): Promise<Bed[]> {
+  return (await db()).listBeds(projectId);
 }
 
-export function getBed(id: string): Bed | null {
-  return getDb().select().from(t.beds).where(eq(t.beds.id, id)).get() ?? null;
+export async function getBed(id: string): Promise<Bed | null> {
+  return (await db()).getBed(id);
 }
 
-export function createBed(projectId: string, input: Partial<Bed> & { name: string }): Bed {
+export async function createBed(projectId: string, input: Partial<Bed> & { name: string }): Promise<Bed> {
   const bed: Bed = {
     id: newId("b_"),
     projectId,
@@ -75,52 +84,42 @@ export function createBed(projectId: string, input: Partial<Bed> & { name: strin
     photos: input.photos ?? [],
     createdAt: now(),
   };
-  getDb().insert(t.beds).values(bed).run();
+  await (await db()).insertBed(bed);
   return bed;
 }
 
-export function updateBed(id: string, patch: Partial<Omit<Bed, "id" | "projectId" | "createdAt">>): Bed | null {
-  if (Object.keys(patch).length) getDb().update(t.beds).set(patch).where(eq(t.beds.id, id)).run();
+export async function updateBed(id: string, patch: Partial<Omit<Bed, "id" | "projectId" | "createdAt">>): Promise<Bed | null> {
+  await (await db()).updateBed(id, patch);
   return getBed(id);
 }
 
-export function deleteBed(id: string) {
-  getDb().delete(t.beds).where(eq(t.beds.id, id)).run();
+export async function deleteBed(id: string) {
+  await (await db()).deleteBed(id);
 }
 
 // ---- Plan versions (immutable snapshots) ---------------------------------------
 
-export function listVersions(bedId: string): (Omit<PlanVersion, "drifts" | "zoneNotes"> & { seq: number; driftCount: number })[] {
-  return getDb()
-    .select()
-    .from(t.planVersions)
-    .where(eq(t.planVersions.bedId, bedId))
-    .orderBy(desc(t.planVersions.seq))
-    .all()
-    .map(({ drifts, zoneNotes: _z, ...rest }) => ({ ...rest, driftCount: drifts.length }));
+export async function listVersions(bedId: string): Promise<VersionSummary[]> {
+  return (await db()).listVersions(bedId);
 }
 
-export function getVersion(id: string): (PlanVersion & { seq: number }) | null {
-  return getDb().select().from(t.planVersions).where(eq(t.planVersions.id, id)).get() ?? null;
+export async function getVersion(id: string): Promise<VersionRow | null> {
+  return (await db()).getVersion(id);
 }
 
-export function latestVersion(bedId: string): (PlanVersion & { seq: number }) | null {
-  return (
-    getDb().select().from(t.planVersions).where(eq(t.planVersions.bedId, bedId)).orderBy(desc(t.planVersions.seq)).limit(1).get() ??
-    null
-  );
+export async function latestVersion(bedId: string): Promise<VersionRow | null> {
+  return (await db()).latestVersion(bedId);
 }
 
-export function createVersion(
+export async function createVersion(
   bedId: string,
   plan: Plan,
   author: PlanAuthor,
   rationale: string,
   parentId: string | null,
-): PlanVersion & { seq: number } {
-  const db = getDb();
-  const top = db.select({ m: max(t.planVersions.seq) }).from(t.planVersions).where(eq(t.planVersions.bedId, bedId)).get();
-  const v = {
+): Promise<VersionRow> {
+  const b = await db();
+  const v: VersionRow = {
     id: newId("v_"),
     bedId,
     parentId,
@@ -129,78 +128,66 @@ export function createVersion(
     author,
     rationale,
     createdAt: now(),
-    seq: (top?.m ?? 0) + 1,
+    seq: (await b.maxSeq(bedId)) + 1,
   };
-  db.insert(t.planVersions).values(v).run();
+  await b.insertVersion(v);
   return v;
 }
 
 // ---- Suggestions ---------------------------------------------------------------
 
-export function listSuggestions(planVersionId: string): Suggestion[] {
-  return getDb().select().from(t.suggestions).where(eq(t.suggestions.planVersionId, planVersionId)).orderBy(t.suggestions.createdAt).all();
+export async function listSuggestions(planVersionId: string): Promise<Suggestion[]> {
+  return (await db()).listSuggestions(planVersionId);
 }
 
-export function replaceOpenSuggestions(planVersionId: string, items: Omit<Suggestion, "id" | "planVersionId" | "status" | "createdAt">[]): Suggestion[] {
-  const db = getDb();
-  db.delete(t.suggestions).where(and(eq(t.suggestions.planVersionId, planVersionId), eq(t.suggestions.status, "open"))).run();
+export async function replaceOpenSuggestions(planVersionId: string, items: NewSuggestion[]): Promise<Suggestion[]> {
+  const b = await db();
+  await b.deleteOpenSuggestions(planVersionId);
   const created = now();
-  const rows: Suggestion[] = items.map((s) => ({ ...s, id: newId("s_"), planVersionId, status: "open", createdAt: created }));
-  if (rows.length) db.insert(t.suggestions).values(rows).run();
-  return listSuggestions(planVersionId);
+  await b.insertSuggestions(items.map((s) => ({ ...s, id: newId("s_"), planVersionId, status: "open", createdAt: created })));
+  return b.listSuggestions(planVersionId);
 }
 
-export function getSuggestion(id: string): Suggestion | null {
-  return getDb().select().from(t.suggestions).where(eq(t.suggestions.id, id)).get() ?? null;
+export async function getSuggestion(id: string): Promise<Suggestion | null> {
+  return (await db()).getSuggestion(id);
 }
 
-export function setSuggestionStatus(id: string, status: Suggestion["status"]) {
-  getDb().update(t.suggestions).set({ status }).where(eq(t.suggestions.id, id)).run();
+export async function setSuggestionStatus(id: string, status: Suggestion["status"]) {
+  await (await db()).setSuggestionStatus(id, status);
 }
 
 /** Suggestions for every version of a bed, newest version first. */
-export function suggestionsForVersions(versionIds: string[]): Suggestion[] {
-  if (!versionIds.length) return [];
-  return getDb().select().from(t.suggestions).where(inArray(t.suggestions.planVersionId, versionIds)).all();
+export async function suggestionsForVersions(versionIds: string[]): Promise<Suggestion[]> {
+  return (await db()).suggestionsForVersions(versionIds);
 }
 
 // ---- Renders ---------------------------------------------------------------------
 
-export function listRenders(planVersionId: string): Render[] {
-  return getDb().select().from(t.renders).where(eq(t.renders.planVersionId, planVersionId)).orderBy(t.renders.month).all();
+export async function listRenders(planVersionId: string): Promise<Render[]> {
+  return (await db()).listRenders(planVersionId);
 }
 
-export function findRender(planVersionId: string, month: number, viewpoint: Render["viewpoint"]): Render | null {
-  return (
-    getDb()
-      .select()
-      .from(t.renders)
-      .where(and(eq(t.renders.planVersionId, planVersionId), eq(t.renders.month, month), eq(t.renders.viewpoint, viewpoint)))
-      .get() ?? null
-  );
+export async function findRender(planVersionId: string, month: number, viewpoint: Render["viewpoint"]): Promise<Render | null> {
+  return (await db()).findRender(planVersionId, month, viewpoint);
 }
 
-export function saveRender(r: Omit<Render, "id" | "createdAt">): Render {
-  const db = getDb();
-  const existing = findRender(r.planVersionId, r.month, r.viewpoint);
-  if (existing) db.delete(t.renders).where(eq(t.renders.id, existing.id)).run();
+export async function saveRender(r: Omit<Render, "id" | "createdAt">): Promise<Render> {
+  const b = await db();
+  const existing = await b.findRender(r.planVersionId, r.month, r.viewpoint);
+  if (existing) await b.deleteRender(existing.id);
   const row: Render = { ...r, id: newId("r_"), createdAt: now() };
-  db.insert(t.renders).values(row).run();
+  await b.insertRender(row);
   return row;
 }
 
 // ---- Agent sessions ----------------------------------------------------------------
 
-export function getAgentSession(bedId: string): AgentSession | null {
-  return getDb().select().from(t.agentSessions).where(eq(t.agentSessions.bedId, bedId)).get() ?? null;
+export async function getAgentSession(bedId: string): Promise<AgentSession | null> {
+  return (await db()).getAgentSession(bedId);
 }
 
-export function saveAgentSession(s: Omit<AgentSession, "updatedAt">): AgentSession {
+export async function saveAgentSession(s: Omit<AgentSession, "updatedAt">): Promise<AgentSession> {
   const row = { ...s, updatedAt: now() };
-  getDb()
-    .insert(t.agentSessions)
-    .values(row)
-    .onConflictDoUpdate({ target: t.agentSessions.bedId, set: { messages: row.messages, checklist: row.checklist, updatedAt: row.updatedAt } })
-    .run();
+  await (await db()).upsertAgentSession(row);
   return row;
 }
