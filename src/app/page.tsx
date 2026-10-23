@@ -6,8 +6,8 @@ import { plantLibrary } from "@/lib/plants";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
-  const projects = repo.listProjects();
+export default async function Home() {
+  const projects = await repo.listProjects();
   return (
     <>
       <TopBar />

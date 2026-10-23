@@ -13,14 +13,14 @@ import type { Bed, MissingInfoItem, Plan, PlanVersion } from "./types";
 
 // Use cases shared by the API routes.
 
-export function requireBed(id: string): Bed {
-  const bed = repo.getBed(id);
+export async function requireBed(id: string): Promise<Bed> {
+  const bed = await repo.getBed(id);
   if (!bed) throw notFound("Bed");
   return bed;
 }
 
-export function requireVersion(bedId: string, versionId?: string | null): PlanVersion {
-  const v = versionId ? repo.getVersion(versionId) : repo.latestVersion(bedId);
+export async function requireVersion(bedId: string, versionId?: string | null): Promise<PlanVersion> {
+  const v = versionId ? await repo.getVersion(versionId) : await repo.latestVersion(bedId);
   if (!v || v.bedId !== bedId) throw notFound("Plan version");
   return v;
 }
@@ -29,53 +29,53 @@ export function versionLabel(v: PlanVersion & { seq?: number }): string {
   return `Version ${v.seq ?? ""} · ${v.author} · ${new Date(v.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`;
 }
 
-export function bedState(bedId: string, versionId?: string | null) {
-  const bed = requireBed(bedId);
-  const project = repo.getProject(bed.projectId);
+export async function bedState(bedId: string, versionId?: string | null) {
+  const bed = await requireBed(bedId);
+  const project = await repo.getProject(bed.projectId);
   if (!project) throw notFound("Project");
-  const versions = repo.listVersions(bedId);
-  const version = versionId ? requireVersion(bedId, versionId) : repo.latestVersion(bedId);
-  const session = repo.getAgentSession(bedId);
+  const versions = await repo.listVersions(bedId);
+  const version = versionId ? await requireVersion(bedId, versionId) : await repo.latestVersion(bedId);
+  const session = await repo.getAgentSession(bedId);
   return {
     bed,
     project,
-    siblings: repo.listBeds(project.id).map((b) => ({ id: b.id, name: b.name })),
+    siblings: (await repo.listBeds(project.id)).map((b) => ({ id: b.id, name: b.name })),
     versions,
     version,
-    suggestions: version ? repo.listSuggestions(version.id) : [],
-    renders: version ? repo.listRenders(version.id) : [],
+    suggestions: version ? await repo.listSuggestions(version.id) : [],
+    renders: version ? await repo.listRenders(version.id) : [],
     session: session ? { ...session, checklist: buildChecklist(bed, session.checklist) } : { bedId, messages: [], checklist: buildChecklist(bed) },
     planner: getPlanner().name,
     renderer: { name: renderProvider.name, available: renderProvider.available },
   };
 }
 
-export function saveVersion(bedId: string, plan: Plan, author: PlanVersion["author"], rationale: string, parentId: string | null) {
-  requireBed(bedId);
+export async function saveVersion(bedId: string, plan: Plan, author: PlanVersion["author"], rationale: string, parentId: string | null) {
+  await requireBed(bedId);
   return repo.createVersion(bedId, plan, author, rationale, parentId);
 }
 
-export function startFromTemplate(bedId: string, templateId: string) {
-  const bed = requireBed(bedId);
+export async function startFromTemplate(bedId: string, templateId: string) {
+  const bed = await requireBed(bedId);
   const t = getTemplate(templateId);
   if (!t) throw notFound("Template");
   if (bed.outline.points.length < 3) throw new HttpError(400, "Draw the bed outline before applying a template.");
   const { plan, zones } = applyTemplate(t, bed);
-  repo.updateBed(bedId, { zones });
-  const parent = repo.latestVersion(bedId);
+  await repo.updateBed(bedId, { zones });
+  const parent = await repo.latestVersion(bedId);
   return repo.createVersion(bedId, plan, "template", `Started from the “${t.name}” template. ${t.description}`, parent?.id ?? null);
 }
 
-export function startBlank(bedId: string) {
-  requireBed(bedId);
-  const parent = repo.latestVersion(bedId);
+export async function startBlank(bedId: string) {
+  await requireBed(bedId);
+  const parent = await repo.latestVersion(bedId);
   return repo.createVersion(bedId, { drifts: [], zoneNotes: {} }, "user", "Blank plan.", parent?.id ?? null);
 }
 
 /** Records free-text checklist answers (e.g. style preferences). */
-export function answerChecklist(bedId: string, answers: Record<string, { answer?: string; skip?: boolean }>) {
-  const bed = requireBed(bedId);
-  const session = repo.getAgentSession(bedId);
+export async function answerChecklist(bedId: string, answers: Record<string, { answer?: string; skip?: boolean }>) {
+  const bed = await requireBed(bedId);
+  const session = await repo.getAgentSession(bedId);
   const checklist: MissingInfoItem[] = buildChecklist(bed, session?.checklist).map((item) => {
     const a = answers[item.key];
     if (!a) return item;
@@ -103,9 +103,9 @@ async function withFallback<T>(fn: (p: Planner) => Promise<T>): Promise<{ result
 }
 
 export async function runDraft(bedId: string) {
-  const bed = requireBed(bedId);
-  const project = repo.getProject(bed.projectId)!;
-  const session = repo.getAgentSession(bedId);
+  const bed = await requireBed(bedId);
+  const project = (await repo.getProject(bed.projectId))!;
+  const session = await repo.getAgentSession(bedId);
   const checklist = buildChecklist(bed, session?.checklist);
   const { result, planner, note } = await withFallback<DraftResult>((p) => p.draft({ project, bed, checklist }));
   const at = new Date().toISOString();
@@ -113,37 +113,37 @@ export async function runDraft(bedId: string) {
   messages.push({ role: "agent", text: note ? `${result.message}\n(${note})` : result.message, at });
 
   if (result.status === "needs_info") {
-    repo.saveAgentSession({ bedId, messages, checklist: result.checklist });
+    await repo.saveAgentSession({ bedId, messages, checklist: result.checklist });
     return { status: result.status, planner, message: result.message, version: null };
   }
-  repo.saveAgentSession({ bedId, messages, checklist });
-  repo.updateBed(bedId, { zones: result.zones });
-  const parent = repo.latestVersion(bedId);
-  const version = repo.createVersion(bedId, result.plan, "agent", result.rationale, parent?.id ?? null);
+  await repo.saveAgentSession({ bedId, messages, checklist });
+  await repo.updateBed(bedId, { zones: result.zones });
+  const parent = await repo.latestVersion(bedId);
+  const version = await repo.createVersion(bedId, result.plan, "agent", result.rationale, parent?.id ?? null);
   return { status: result.status, planner, message: result.message, version };
 }
 
 export async function runReview(bedId: string, versionId?: string | null) {
-  const bed = requireBed(bedId);
-  const version = requireVersion(bedId, versionId);
+  const bed = await requireBed(bedId);
+  const version = await requireVersion(bedId, versionId);
   const issues = runChecks(bed, version);
   const { result, planner, note } = await withFallback((p) => p.review({ bed, plan: version, issues }));
-  const suggestions = repo.replaceOpenSuggestions(version.id, result.suggestions);
+  const suggestions = await repo.replaceOpenSuggestions(version.id, result.suggestions);
   return { planner, message: note ? `${result.message} (${note})` : result.message, suggestions };
 }
 
 /** Applies a suggestion's diff as a new plan version; open suggestions carry over. */
-export function applySuggestion(id: string) {
-  const s = repo.getSuggestion(id);
+export async function applySuggestion(id: string) {
+  const s = await repo.getSuggestion(id);
   if (!s) throw notFound("Suggestion");
-  const v = repo.getVersion(s.planVersionId);
+  const v = await repo.getVersion(s.planVersionId);
   if (!v) throw notFound("Plan version");
   const plan = applyOps(v, s.ops);
-  const next = repo.createVersion(v.bedId, plan, "user", `Applied suggestion: ${s.issue}`, v.id);
-  repo.setSuggestionStatus(id, "applied");
-  const rest = repo.listSuggestions(v.id).filter((x) => x.status === "open" && x.id !== id);
+  const next = await repo.createVersion(v.bedId, plan, "user", `Applied suggestion: ${s.issue}`, v.id);
+  await repo.setSuggestionStatus(id, "applied");
+  const rest = (await repo.listSuggestions(v.id)).filter((x) => x.status === "open" && x.id !== id);
   const liveIds = new Set(plan.drifts.map((d) => d.id));
-  repo.replaceOpenSuggestions(
+  await repo.replaceOpenSuggestions(
     next.id,
     rest
       .filter((x) => x.driftIds.every((d) => liveIds.has(d)))
@@ -153,13 +153,13 @@ export function applySuggestion(id: string) {
 }
 
 export async function renderMonth(bedId: string, versionId: string, month: number, viewpoint: "street" | "overhead", force: boolean) {
-  const bed = requireBed(bedId);
-  const version = requireVersion(bedId, versionId);
-  const cached = repo.findRender(version.id, month, viewpoint);
+  const bed = await requireBed(bedId);
+  const version = await requireVersion(bedId, versionId);
+  const cached = await repo.findRender(version.id, month, viewpoint);
   if (cached?.imageUrl && !force) return cached;
 
   const prompt = buildRenderPrompt(bed, version, month, viewpoint);
-  const project = repo.getProject(bed.projectId)!;
+  const project = (await repo.getProject(bed.projectId))!;
   const refUrl = viewpoint === "street" ? bed.photos.find((p) => p.isStreetView)?.url ?? bed.photos[0]?.url : project.aerialUrl;
   if (!renderProvider.available) {
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: null, error: "Set GEMINI_API_KEY to generate renders. The prompt is shown below." });
