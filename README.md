@@ -19,7 +19,8 @@ Everything works without keys: the agent draft and design review fall back to a 
 | `PLANNER` | Force `heuristic` or `claude` | auto |
 | `GEMINI_API_KEY` | Month renders with Gemini image editing | prompt preview only |
 | `GEMINI_IMAGE_MODEL` | Gemini image model | `gemini-2.5-flash-image` |
-| `DATA_DIR` | SQLite db, uploaded aerials and photos, cached renders | `./var` |
+| `DATA_DIR` | SQLite db, uploaded aerials and photos, cached renders | `./var`, or the OS temp folder if that isn't writable |
+| `APP_PASSWORD` | Password for every page and API route (any username). Required on Vercel. | none locally |
 
 ## Workflow
 
