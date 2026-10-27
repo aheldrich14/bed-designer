@@ -30,6 +30,33 @@
       ]
     },
     {
+      "id": "shrub-framed-foundation",
+      "name": "Shrub-framed foundation bed",
+      "description": "About a third shrubs, two thirds perennials: native shrubs at the back corners and one in the middle row give the bed structure all winter, with flowers and grasses around them.",
+      "fits": { "sun": ["full", "part"], "moisture": ["dry", "medium", "wet"] },
+      "rows": [
+        { "zone": "Back", "v": [0, 0.45], "skew": 0.05, "breaks": [0.3, 0.7],
+          "slots": [
+            { "tier": "tall", "kind": "shrub", "prefer": ["ILE-VER", "CEA-AME", "HYP-PRO", "DIE-LON"] },
+            { "tier": "tall", "kind": "bloom", "season": "summer", "prefer": ["RAT-PIN", "HEL-HEL", "EUT-MAC", "MON-FIS"] },
+            { "tier": "tall", "kind": "shrub", "prefer": ["COR-SER", "ROS-CAR", "CEA-AME", "DIE-LON"] }
+          ] },
+        { "zone": "Middle", "v": [0.45, 0.75], "skew": -0.05, "breaks": [0.25, 0.5, 0.75],
+          "slots": [
+            { "tier": "mid", "kind": "bloom", "season": "summer", "prefer": ["ASC-TUB", "MON-FIS", "PEN-DIG"] },
+            { "tier": "mid", "kind": "shrub", "prefer": ["HYP-PRO", "ROS-CAR", "AMO-CAN", "DIE-LON"] },
+            { "tier": "mid", "kind": "grass", "prefer": ["SCH-SCO", "SPO-HET"] },
+            { "tier": "mid", "kind": "bloom", "season": "fall", "prefer": ["SYM-OOL", "SOL-SPE", "SYM-LAE"] }
+          ] },
+        { "zone": "Front edge", "v": [0.75, 1], "skew": 0.05, "breaks": [0.34, 0.66],
+          "slots": [
+            { "tier": "low", "kind": "bloom", "season": "spring", "prefer": ["GEU-TRI", "PEN-HIR", "AQU-CAN"] },
+            { "tier": "low", "kind": "grass", "prefer": ["CAR-PEN", "BOU-CUR", "KOE-MAC"] },
+            { "tier": "low", "kind": "bloom", "season": "summer", "prefer": ["ALL-CER", "COR-LAN", "SOL-NEM"] }
+          ] }
+      ]
+    },
+    {
       "id": "shady-pocket",
       "name": "Shady pocket under a tree",
       "description": "Ferns and woodland perennials in loose layers with a sedge carpet at the front.",

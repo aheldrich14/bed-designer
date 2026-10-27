@@ -16,6 +16,7 @@
   "maxOverlapFraction": 0.15,
   "maxOutsideFraction": 0.2,
   "maxBloomColorsPerMonth": 5,
+  "shrubShare": { "min": 0.15, "max": 0.45, "target": 0.33, "minBedDepthFt": 3, "minBedAreaSqFt": 40, "maxSpreadOfDepth": 0.6 },
   "defaultSize": "plug",
   "gallonMinSpacingIn": 18,
   "sizeForTypes": { "shrub": "1gal", "fern": "1gal" }

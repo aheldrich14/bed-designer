@@ -29,7 +29,8 @@ Good plans for this homeowner:
 - Drifts of at least 3 plants, ideally 5 or more; repeat a few plants rather than using many singles.
 - Something showy in bloom from April through October in each third of the bed.
 - Drifts tile the bed without overlapping and leave existing plants marked "keep" clear.
-- Every plant suits the bed's sun and moisture.`;
+- Every plant suits the bed's sun and moisture.
+- In a bed 3 ft deep or more, shrubs (1 gal) cover about a third of the area, usually at the back and the corners, so the bed has structure in winter; perennials and grasses fill the other two thirds. Use fewer only if the homeowner asks for an all-perennial bed.`;
 
 export class ClaudePlanner implements Planner {
   readonly name = `Claude (${MODEL})`;
