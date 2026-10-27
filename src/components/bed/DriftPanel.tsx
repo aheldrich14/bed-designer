@@ -105,7 +105,7 @@ export function PlantPicker({ bed, drift, selectedId, onPick }: { bed: Bed; drif
       </div>
       <div className="list" style={{ maxHeight: 320, overflow: "auto", gap: 4 }}>
         {list.map(({ plant: p }) => (
-          <button key={p.id} className={`small ${p.id === selectedId ? "active" : ""}`} style={{ justifyContent: "flex-start", textAlign: "left" }} onClick={() => onPick(p.id)}>
+          <button key={p.id} className={`small ${p.id === selectedId ? "active" : ""}`} style={{ justifyContent: "flex-start", textAlign: "left", flex: "none" }} onClick={() => onPick(p.id)}>
             <span className="swatch" style={{ background: p.bloomColor }} />
             <span style={{ flex: 1 }}>
               <strong>{p.code}</strong> {p.common}
