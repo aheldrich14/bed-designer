@@ -27,6 +27,8 @@ export type Plant = {
   bloomMonths: number[];
   bloomColor: string;
   bloomColorName: string;
+  /** Size and shape of the flowers, for renders, e.g. "2-3 in daisies". */
+  flowerForm?: string;
   /** Whether the bloom reads as color in the garden (grasses and sedges do not). */
   showy: boolean;
   foliage: string;

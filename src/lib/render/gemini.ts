@@ -16,7 +16,7 @@ export class GeminiRenderProvider implements RenderProvider {
     return !!this.apiKey;
   }
 
-  async render({ prompt, images }: RenderRequest): Promise<RenderOutput> {
+  async render({ prompt, images, aspectRatio }: RenderRequest): Promise<RenderOutput> {
     if (!this.apiKey) throw new Error("Set GEMINI_API_KEY to generate renders.");
     // Each image is preceded by its label so the prompt can refer to "image 1", "image 2".
     const parts: GeminiPart[] = images.flatMap((img, i): GeminiPart[] => [
@@ -29,7 +29,7 @@ export class GeminiRenderProvider implements RenderProvider {
       headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
-        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"], ...(aspectRatio && { imageConfig: { aspectRatio } }) },
       }),
     });
     if (!res.ok) {

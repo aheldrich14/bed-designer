@@ -4,7 +4,8 @@ import { sampleBed } from "../fixtures";
 import { polygonGap } from "../geometry";
 import { applyTemplate, getTemplate } from "../templates";
 import { sheetToSvg } from "../export/svg";
-import { buildRenderPrompt } from "./prompt";
+import { buildClearPrompt, buildRenderPrompt } from "./prompt";
+import { imageSize, nearestAspectRatio } from "./image";
 import { svgToPng } from "./raster";
 import { describeSite, siteGaps, sitePlanSheet } from "./site";
 import type { Project } from "../types";
@@ -44,8 +45,41 @@ describe("site scale for renders", () => {
     expect(lines).toMatch(/house front is about 50 ft wide/);
     const prompt = buildRenderPrompt(zoned, plan, 7, "street", { project, sitePlan: true });
     expect(prompt).toContain("Image 2 is a to-scale overhead site plan");
-    expect(prompt).toContain("do not enlarge them");
+    expect(prompt).toContain("judge each plant against things at the same distance from the camera");
+    expect(prompt).toMatch(/on an adult standing on the walk/);
+    expect(prompt).toContain("not one large bush");
+    // The bed backs onto the house, so the door is a fair comparison for the back row.
+    expect(prompt).toMatch(/the height of the 7 ft front door/);
     expect(prompt).toContain("No existing plants stay.");
+    // Image models can't count plants; drifts read as density instead.
+    expect(prompt).not.toMatch(/a drift of \d+/);
+    expect(prompt.split("\n").at(-1)).toMatch(/none taller than/);
+  });
+
+  it("clears the bed in its own pass, then plants the cleared photo", () => {
+    const clear = buildClearPrompt(zoned, { project, sitePlan: true });
+    expect(clear).toContain("Remove every plant growing inside it");
+    expect(clear).toContain("shredded hardwood mulch");
+    expect(clear).toContain("about 12' from the bed edge");
+    const plant = buildRenderPrompt(zoned, plan, 7, "street", { project, sitePlan: true, cleared: true });
+    expect(plant).toContain("has already been cleared to bare shredded hardwood mulch");
+    expect(plant).not.toContain("No existing plants stay.");
+    expect(plant.indexOf("Keep") < plant.indexOf("Planting, left to right")).toBe(true);
+  });
+
+  it("matches the photo's aspect ratio", () => {
+    const png = (w: number, h: number) => {
+      const b = Buffer.alloc(32);
+      b.writeUInt32BE(0x89504e47, 0);
+      b.writeUInt32BE(w, 16);
+      b.writeUInt32BE(h, 20);
+      return b;
+    };
+    expect(imageSize(png(1600, 1200))).toEqual({ width: 1600, height: 1200 });
+    expect(nearestAspectRatio(png(1600, 1200))).toBe("4:3");
+    expect(nearestAspectRatio(png(1920, 1080))).toBe("16:9");
+    expect(nearestAspectRatio(png(1000, 1500))).toBe("2:3");
+    expect(nearestAspectRatio(Buffer.from("not an image at all, just text"))).toBeUndefined();
   });
 
   it("rasterizes the overhead site plan", () => {
