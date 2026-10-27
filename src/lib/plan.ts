@@ -1,5 +1,5 @@
 import {
-  blob, effectivePoints, pointInPolygon, scaleShapeArea, shapeArea, shapeCentroid, bbox,
+  blob, effectivePoints, intersectionArea, pointInPolygon, polygonArea, scaleShapeArea, shapeArea, shapeCentroid, subtractLargest, bbox,
 } from "./geometry";
 import { plantLibrary } from "./plants";
 import { defaultSizeFor, rules as defaultRules, spacingFor, type DesignRules } from "./rules";
@@ -160,4 +160,22 @@ export function emptyPlan(): Plan {
 export function driftForCount(plant: Plant, center: Pt, count: number, r: DesignRules = defaultRules, size: PotSize = defaultSizeFor(plant, r)): Shape {
   const s = spacingFor(plant, size, r) / 12;
   return blob(center, (count * s * s) / r.staggerFactor);
+}
+
+/** Ops that trim drifts overlapping `area` around it, or remove ones that would be left with almost nothing. */
+export function makeRoomOps(plan: Plan, area: Pt[], exceptId?: string): PlanOp[] {
+  const ops: PlanOp[] = [];
+  for (const d of plan.drifts) {
+    if (d.id === exceptId) continue;
+    const pts = effectivePoints(d.shape);
+    if (intersectionArea(pts, area) <= 0.25) continue;
+    const rest = subtractLargest(pts, area);
+    ops.push(rest && polygonArea(rest) >= 2 ? { op: "setShape", driftId: d.id, shape: { points: rest, smooth: false } } : { op: "removeDrift", driftId: d.id });
+  }
+  return ops;
+}
+
+/** Ops that add a drift and make room for it. */
+export function addDriftOps(plan: Plan, drift: Drift): PlanOp[] {
+  return [{ op: "addDrift", drift }, ...makeRoomOps(plan, effectivePoints(drift.shape))];
 }

@@ -1,8 +1,8 @@
 import {
   carveExisting, circlePolygon, clipToLargest, differenceArea, dist, effectivePoints, frameBounds, fromFrame, intersectionArea,
-  polygonArea, regionNames, shapeArea, shapeCentroid, subtractLargest, toFrame, unionArea,
+  polygonArea, regionNames, shapeArea, shapeCentroid, toFrame, unionArea,
 } from "./geometry";
-import { driftCount, driftForCount, newId } from "./plan";
+import { addDriftOps, applyOps, driftCount, driftForCount, newId } from "./plan";
 import { fitsSite, plantLibrary, sunClass } from "./plants";
 import { MONTH_NAMES, rules as defaultRules, shrubFitsDepth, spacingFor, tierOf, type DesignRules } from "./rules";
 import { kindOf, rankPlants, siteAt } from "./match";
@@ -464,20 +464,15 @@ function structure({ bed, plan, rules, plants }: Ctx): Issue[] {
     const count = Math.max(1, Math.min(5, Math.ceil((share.target * bedArea - shrubArea) / perPlant / corners.length)));
     const inset = Math.min(W / 4, Math.max((spacingFt * Math.sqrt(count)) / 2, W * 0.12));
     const depth = Math.min(D / 2, Math.max(spacingFt / 2, D * 0.25));
+    let working = plan;
     for (const side of corners) {
       const center = fromFrame({ l: side === 0 ? fb.minL + inset : fb.maxL - inset, d: fb.minD + depth }, o);
       const clipped = carveExisting(clipToLargest(effectivePoints(driftForCount(pick, center, count, rules, "1gal")), outline), bed);
-      if (clipped && polygonArea(clipped) >= 1) {
-        ops.push({ op: "addDrift", drift: { id: newId("d_"), plantId: pick.id, size: "1gal", shape: { points: clipped, smooth: true } } });
-      }
-    }
-    // Make room: trim the drifts the new shrubs land on, or drop ones that would be left with almost nothing.
-    const added = ops.map((op) => effectivePoints((op as { drift: Drift }).drift.shape));
-    for (const d of plan.drifts) {
-      let pts = effectivePoints(d.shape);
-      if (!added.some((a) => intersectionArea(pts, a) > 0.25)) continue;
-      for (const a of added) pts = (pts.length >= 3 && subtractLargest(pts, a)) || [];
-      ops.push(pts.length >= 3 && polygonArea(pts) >= 2 ? { op: "setShape", driftId: d.id, shape: { points: pts, smooth: false } } : { op: "removeDrift", driftId: d.id });
+      if (!clipped || polygonArea(clipped) < 1) continue;
+      // Trims the drifts the new shrubs land on, or drops ones that would be left with almost nothing.
+      const add = addDriftOps(working, { id: newId("d_"), plantId: pick.id, size: "1gal", shape: { points: clipped, smooth: true } });
+      working = applyOps(working, add);
+      ops.push(...add);
     }
     if (ops.length) {
       const where = corners.length === 2 ? "both back corners" : `the back of the ${ends[corners[0] === 0 ? 0 : 2]}`;

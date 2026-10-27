@@ -3,7 +3,9 @@ import { applyOps, countFor } from "../plan";
 import { plantLibrary } from "../plants";
 import { applyTemplate, templatesFor } from "../templates";
 import { missingRequired } from "./missing-info";
-import { issueToSuggestion, type DraftInput, type DraftResult, type Planner, type ReviewInput, type ReviewResult } from "./planner";
+import {
+  issueToSuggestion, type DraftInput, type DraftResult, type EditResult, type Planner, type ReviewInput, type ReviewResult,
+} from "./planner";
 
 /**
  * Offline planner: picks the best-fitting starter template, then applies the
@@ -48,6 +50,14 @@ export class HeuristicPlanner implements Planner {
       message: suggestions.length
         ? `${suggestions.length} suggestion${suggestions.length > 1 ? "s" : ""} from the design checks.`
         : "The plan passes every design check.",
+    };
+  }
+
+  async edit(): Promise<EditResult> {
+    return {
+      reply: "Talking through changes needs the Claude planner: set ANTHROPIC_API_KEY and restart. Until then you can edit drifts directly on the plan, or apply fixes from the live checks.",
+      ops: [],
+      summary: null,
     };
   }
 }

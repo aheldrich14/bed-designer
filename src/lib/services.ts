@@ -5,7 +5,7 @@ import { runChecks } from "./checks";
 import { applyTemplate, getTemplate } from "./templates";
 import { buildChecklist } from "./agent/missing-info";
 import { getPlanner, heuristicPlanner } from "./agent";
-import type { DraftResult, Planner } from "./agent/planner";
+import type { DraftResult, EditFocus, EditResult, Planner } from "./agent/planner";
 import { buildRenderPrompt } from "./render/prompt";
 import { renderProvider } from "./render/gemini";
 import type { RenderImage } from "./render/provider";
@@ -125,6 +125,32 @@ export async function runDraft(bedId: string) {
   const parent = repo.latestVersion(bedId);
   const version = repo.createVersion(bedId, result.plan, "agent", result.rationale, parent?.id ?? null);
   return { status: result.status, planner, message: result.message, version };
+}
+
+/**
+ * One chat turn about the plan open in the editor. The plan and bed geometry
+ * come from the editor (they may be unsaved); the reply's ops are applied there.
+ */
+export async function chatEdit(
+  bedId: string,
+  input: { message: string; plan: Plan; outline?: Bed["outline"]; zones?: Bed["zones"]; existing?: Bed["existing"]; focus: EditFocus },
+) {
+  const saved = requireBed(bedId);
+  const bed: Bed = { ...saved, outline: input.outline ?? saved.outline, zones: input.zones ?? saved.zones, existing: input.existing ?? saved.existing };
+  const session = repo.getAgentSession(bedId);
+  const history = session?.messages ?? [];
+  const planner = getPlanner();
+  let result: EditResult;
+  try {
+    result = await planner.edit({ bed, plan: input.plan, message: input.message, history, focus: input.focus });
+  } catch (e) {
+    console.error("Chat edit failed:", e);
+    result = { reply: `Sorry, that didn't go through (${e instanceof Error ? e.message : "error"}). Try again, or put it another way.`, ops: [], summary: null };
+  }
+  const at = new Date().toISOString();
+  const messages = [...history, { role: "user" as const, text: input.message, at }, { role: "agent" as const, text: result.reply, at }];
+  repo.saveAgentSession({ bedId, messages, checklist: session?.checklist ?? buildChecklist(saved) });
+  return { ...result, planner: planner.name, messages };
 }
 
 export async function runReview(bedId: string, versionId?: string | null) {

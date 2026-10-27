@@ -116,6 +116,10 @@ pre.prompt { white-space: pre-wrap; background: #fbfaf6; border: 1px solid var(-
 
 .kbd { font-family: ui-monospace, monospace; font-size: 12px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
 .hint { font-size: 12px; color: var(--muted); }
+.chat { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.chat .msg { padding: 8px 10px; border-radius: 10px; font-size: 14px; max-width: 92%; }
+.chat .msg.user { align-self: flex-end; background: var(--accent-soft); }
+.chat .msg.agent { align-self: flex-start; background: #fff; border: 1px solid var(--line); }
 @media (max-width: 600px) {
   .page { padding: 12px 10px 48px; }
   .topbar { padding: 8px 10px; }

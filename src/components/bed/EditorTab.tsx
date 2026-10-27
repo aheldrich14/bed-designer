@@ -13,6 +13,7 @@ import { useSvgPoint } from "../useSvgPoint";
 import type { BedStateData } from "./BedWorkspace";
 import { DriftPanel, PlantPicker } from "./DriftPanel";
 import { ChecksPanel } from "./ChecksPanel";
+import { PlannerChat } from "./PlannerChat";
 import { MonthSlider } from "./MonthSlider";
 
 type Tool = "select" | "outline" | "draw-outline" | "add-drift" | "draw-drift" | "zone" | "existing";
@@ -381,6 +382,7 @@ export function EditorTab({ data }: { data: BedStateData }) {
           </section>
         )}
         {selectedDrift && tool === "select" && <DriftPanel bed={bed} drift={selectedDrift} />}
+        <PlannerChat data={data} />
         {selectedZone && (
           <section className="card stack">
             <div className="row between">
