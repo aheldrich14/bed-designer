@@ -6,7 +6,8 @@ import { applyTemplate, getTemplate } from "./templates";
 import { buildChecklist } from "./agent/missing-info";
 import { getPlanner, heuristicPlanner } from "./agent";
 import type { DraftResult, EditFocus, EditResult, Planner } from "./agent/planner";
-import { buildRenderPrompt } from "./render/prompt";
+import { buildClearPrompt, buildRenderPrompt } from "./render/prompt";
+import { nearestAspectRatio } from "./render/image";
 import { renderProvider } from "./render/gemini";
 import type { RenderImage } from "./render/provider";
 import { svgToPng } from "./render/raster";
@@ -191,6 +192,38 @@ export async function sitePlanPng(bed: Bed, plan: Plan, project: Project, month:
   return svgToPng(sheetToSvg(sheet), sheet.width);
 }
 
+/** Render row that caches the cleared photo (pass 1 of a street render); the Renders tab only shows months 1 to 12. */
+const CLEARED_MONTH = 0;
+
+/** Prompt preview for the Renders tab; street renders show both passes. */
+export function renderPromptPreview(bed: Bed, plan: Plan, month: number, viewpoint: "street" | "overhead", project: Project | null): string {
+  const opts = { project, sitePlan: true };
+  if (viewpoint === "overhead") return buildRenderPrompt(bed, plan, month, viewpoint, opts);
+  return `Pass 1, clear the bed:\n${buildClearPrompt(bed, opts)}\n\nPass 2, plant it:\n${buildRenderPrompt(bed, plan, month, viewpoint, { ...opts, cleared: true })}`;
+}
+
+/**
+ * Pass 1 of a street render: the photo with the bed emptied to mulch, cached per
+ * plan version. Returns null when it fails, so the caller can render in one pass.
+ */
+async function clearedPhoto(bed: Bed, version: PlanVersion, project: Project, photo: RenderImage, sitePlan: RenderImage | null, aspectRatio: string | undefined, force: boolean): Promise<RenderImage | null> {
+  const cached = repo.findRender(version.id, CLEARED_MONTH, "street");
+  if (cached?.imageUrl && !force) {
+    const file = await fileStore.read(cached.imageUrl);
+    if (file) return { data: file.data, mimeType: file.contentType };
+  }
+  const prompt = buildClearPrompt(bed, { project, sitePlan: !!sitePlan });
+  try {
+    const out = await renderProvider.render({ prompt, images: sitePlan ? [photo, sitePlan] : [photo], aspectRatio });
+    const url = await fileStore.save("renders", out.data, extFor(out.mimeType));
+    repo.saveRender({ planVersionId: version.id, month: CLEARED_MONTH, viewpoint: "street", prompt, imageUrl: url, error: null });
+    return out;
+  } catch (e) {
+    console.error("Clearing pass failed; rendering in one pass.", e);
+    return null;
+  }
+}
+
 export async function renderMonth(bedId: string, versionId: string, month: number, viewpoint: "street" | "overhead", force: boolean) {
   const bed = requireBed(bedId);
   const version = requireVersion(bedId, versionId);
@@ -198,25 +231,36 @@ export async function renderMonth(bedId: string, versionId: string, month: numbe
   if (cached?.imageUrl && !force) return cached;
 
   const project = repo.getProject(bed.projectId)!;
-  let prompt = buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: true });
   const refUrl = viewpoint === "street" ? bed.photos.find((p) => p.isStreetView)?.url ?? bed.photos[0]?.url : project.aerialUrl;
   if (!renderProvider.available) {
+    const prompt = renderPromptPreview(bed, version, month, viewpoint, project);
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: null, error: "Set GEMINI_API_KEY to generate renders. The prompt is shown below." });
   }
   if (viewpoint === "street" && !refUrl) {
+    const prompt = buildRenderPrompt(bed, version, month, viewpoint, { project });
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: null, error: "Upload a street-level photo of the bed first." });
   }
   const ref = refUrl ? await fileStore.read(refUrl) : null;
-  const images: RenderImage[] = ref ? [{ data: ref.data, mimeType: ref.contentType }] : [];
+  let photo: RenderImage | null = ref ? { data: ref.data, mimeType: ref.contentType } : null;
+  // Match the photo's shape so the model edits it instead of reframing the scene.
+  const aspectRatio = photo ? nearestAspectRatio(photo.data) : undefined;
   // The to-scale overhead plan tells the model how big the bed is and how far it sits from the house and walk.
+  let sitePlan: RenderImage | null = null;
   try {
-    images.push({ data: await sitePlanPng(bed, version, project, month), mimeType: "image/png" });
+    sitePlan = { data: await sitePlanPng(bed, version, project, month), mimeType: "image/png" };
   } catch (e) {
     console.error("Site plan image failed; rendering without it.", e);
-    prompt = buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: false });
   }
+  // Street renders go in two passes: clear the bed, then plant the cleared photo.
+  let cleared = false;
+  if (viewpoint === "street" && photo) {
+    const empty = await clearedPhoto(bed, version, project, photo, sitePlan, aspectRatio, force);
+    if (empty) [photo, cleared] = [empty, true];
+  }
+  const prompt = buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: !!sitePlan, cleared });
+  const images = [photo, sitePlan].filter((img): img is RenderImage => !!img);
   try {
-    const out = await renderProvider.render({ prompt, images });
+    const out = await renderProvider.render({ prompt, images, aspectRatio });
     const url = await fileStore.save("renders", out.data, extFor(out.mimeType));
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: url, error: null });
   } catch (e) {

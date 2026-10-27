@@ -1,8 +1,7 @@
 import { z } from "zod";
 import * as repo from "@/lib/db/repo";
 import { body, json, route, type Params } from "@/lib/http";
-import { buildRenderPrompt } from "@/lib/render/prompt";
-import { renderMonth, requireBed, requireVersion } from "@/lib/services";
+import { renderMonth, renderPromptPreview, requireBed, requireVersion } from "@/lib/services";
 
 type P = Params<{ id: string }>;
 
@@ -17,7 +16,7 @@ export const GET = route<P>(async (req, { params }) => {
   const month = Number(url.searchParams.get("month") ?? 7);
   const viewpoint = url.searchParams.get("viewpoint") === "overhead" ? "overhead" : "street";
   const project = repo.getProject(bed.projectId);
-  return json({ renders: repo.listRenders(version.id), prompt: buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: true }) });
+  return json({ renders: repo.listRenders(version.id), prompt: renderPromptPreview(bed, version, month, viewpoint, project) });
 });
 
 export const POST = route<P>(async (req, { params }) => {
