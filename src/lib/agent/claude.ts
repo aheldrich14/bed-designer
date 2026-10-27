@@ -4,13 +4,16 @@ import { z } from "zod";
 import { fitsSite, plantLibrary, sunClass } from "../plants";
 import { tierOf } from "../rules";
 import { siteAt } from "../match";
-import { describeBed, describePlan, plantLine } from "./describe";
+import { effectivePoints } from "../geometry";
+import { bedFrame, describeBed, describePlan, plantLine } from "./describe";
 import { missingRequired } from "./missing-info";
 import { ProposalSchema, proposalToPlan, type ValidationResult } from "./proposal";
 import {
-  issueToSuggestion, type DraftInput, type DraftResult, type NewSuggestion, type Planner, type ReviewInput, type ReviewResult,
+  issueToSuggestion, type DraftInput, type DraftResult, type EditFocus, type EditInput, type EditResult, type NewSuggestion, type Planner,
+  type ReviewInput, type ReviewResult,
 } from "./planner";
-import type { MissingInfoItem, PlanOp } from "../types";
+import { changesToOps, EditProposalSchema } from "./edit";
+import type { AgentMessage, Bed, MissingInfoItem, Moisture, Plan, PlanOp, Sun } from "../types";
 
 const MODEL = process.env.PLANNER_MODEL || "claude-opus-5-5";
 
@@ -29,7 +32,43 @@ Good plans for this homeowner:
 - Drifts of at least 3 plants, ideally 5 or more; repeat a few plants rather than using many singles.
 - Something showy in bloom from April through October in each third of the bed.
 - Drifts tile the bed without overlapping and leave existing plants marked "keep" clear.
-- Every plant suits the bed's sun and moisture.`;
+- Every plant suits the bed's sun and moisture.
+- In a bed 3 ft deep or more, shrubs (1 gal) cover about a third of the area, usually at the back and the corners, so the bed has structure in winter; perennials and grasses fill the other two thirds. Use fewer only if the homeowner asks for an all-perennial bed.`;
+
+const EDIT_SYSTEM = `${SYSTEM}
+
+You are now in a conversation with the homeowner about a plan that already exists. Each turn, do one of three things:
+- Make the change they ask for with propose_changes, touching only what the request needs and keeping the rest of the plan as it is.
+- Ask one short question when the request is ambiguous (where, how big, which plant) and a wrong guess would waste their time.
+- Answer a question about the plan or the plants without changing anything.
+Place new or moved drifts with u/v rectangles in bed fractions. Adding a drift trims the drifts underneath it. "Hedge-like" or "screen" means a continuous row of shrubs (1 gal) in a band, usually at the back. "Here", "this" or "this area" means what the homeowner has selected, when they have selected something.
+Check propose_changes' warnings and fix any you introduced. Every call to propose_changes starts again from the original plan, so the last call is the change they get.
+Reply in one to three plain sentences: what you changed and why, or your question. Never mention drift ids, u/v numbers or tool names.`;
+
+/** Library plants that suit a sun and moisture class, one line each. */
+function searchPlantsTool(site: { sun: Sun | null; moisture: Moisture | null }) {
+  return betaZodTool({
+    name: "search_plants",
+    description: "List library plants that suit a sun and moisture class, optionally filtered by height tier, plant type and bloom month. Returns one line per plant with its code.",
+    inputSchema: z.object({
+      sun: z.enum(["full", "part", "shade"]).optional(),
+      moisture: z.enum(["dry", "medium", "wet"]).optional(),
+      tier: z.enum(["low", "mid", "tall"]).optional(),
+      type: z.enum(["perennial", "grass", "sedge", "fern", "shrub", "groundcover"]).optional(),
+      bloomMonth: z.number().int().min(1).max(12).optional(),
+    }),
+    run: async (q) => {
+      const lines = plantLibrary
+        .all()
+        .filter((p) => fitsSite(p, q.sun ?? site.sun, q.moisture ?? site.moisture))
+        .filter((p) => !q.tier || tierOf(p) === q.tier)
+        .filter((p) => !q.type || p.type === q.type)
+        .filter((p) => !q.bloomMonth || p.bloomMonths.includes(q.bloomMonth))
+        .map(plantLine);
+      return lines.length ? lines.join("\n") : "No library plants match those filters.";
+    },
+  });
+}
 
 export class ClaudePlanner implements Planner {
   readonly name = `Claude (${MODEL})`;
@@ -48,25 +87,7 @@ export class ClaudePlanner implements Planner {
       run: async () => JSON.stringify({ bed: describeBed(bed), checklist }),
     });
 
-    const searchPlants = betaZodTool({
-      name: "search_plants",
-      description: "List library plants that suit a sun and moisture class, optionally filtered by height tier and bloom month. Returns one line per plant with its code.",
-      inputSchema: z.object({
-        sun: z.enum(["full", "part", "shade"]).optional(),
-        moisture: z.enum(["dry", "medium", "wet"]).optional(),
-        tier: z.enum(["low", "mid", "tall"]).optional(),
-        bloomMonth: z.number().int().min(1).max(12).optional(),
-      }),
-      run: async (q) => {
-        const lines = plantLibrary
-          .all()
-          .filter((p) => fitsSite(p, q.sun ?? site.sun, q.moisture ?? site.moisture))
-          .filter((p) => !q.tier || tierOf(p) === q.tier)
-          .filter((p) => !q.bloomMonth || p.bloomMonths.includes(q.bloomMonth))
-          .map(plantLine);
-        return lines.length ? lines.join("\n") : "No library plants match those filters.";
-      },
-    });
+    const searchPlants = searchPlantsTool(site);
 
     const requestInfo = betaZodTool({
       name: "request_missing_info",
@@ -208,6 +229,83 @@ ${plantLibrary.all().filter((p) => fitsSite(p, sunClass(bed.conditions.sunHours)
       return { x: pts.reduce((s, q) => s + q.x, 0) / pts.length, y: pts.reduce((s, q) => s + q.y, 0) / pts.length };
     }
   }
+
+  async edit({ bed, plan, message, history, focus }: EditInput): Promise<EditResult> {
+    let proposal: { summary: string; ops: PlanOp[] } | null = null;
+    const site = { sun: sunClass(bed.conditions.sunHours), moisture: bed.conditions.moisture };
+
+    const propose = betaZodTool({
+      name: "propose_changes",
+      description: "Change the current plan. Changes apply in order; the server validates them and reports problems. Each call replaces the previous proposal.",
+      inputSchema: EditProposalSchema,
+      run: async ({ summary, changes }) => {
+        const r = changesToOps(bed, plan, changes);
+        if (r.errors.length) return `Not applied:\n- ${r.errors.join("\n- ")}`;
+        proposal = { summary, ops: r.ops };
+        const after = describePlan(bed, r.plan).map((d) => `${d.code} ×${d.count} (${d.size}) u ${d.u.join("–")} v ${d.v.join("–")}`);
+        return [
+          `Ready: ${summary}.`,
+          r.warnings.length ? `Warnings:\n- ${r.warnings.join("\n- ")}` : "No new problems.",
+          `Plan after the change:\n${after.join("\n")}`,
+          "If this is right, end your turn with your reply to the homeowner; otherwise call propose_changes again.",
+        ].join("\n");
+      },
+    });
+
+    const context = [
+      `Bed: ${JSON.stringify(describeBed(bed))}`,
+      `Current plan drifts: ${JSON.stringify(describePlan(bed, plan))}`,
+      focusLine(bed, plan, focus),
+      `Homeowner: ${message}`,
+    ].join("\n\n");
+
+    const final = await this.client.beta.messages.toolRunner({
+      model: MODEL,
+      max_tokens: 16000,
+      output_config: { effort: "medium" },
+      ...FALLBACK,
+      system: EDIT_SYSTEM,
+      tools: [searchPlantsTool(site), propose],
+      max_iterations: 10,
+      messages: [...historyTurns(history), { role: "user", content: context }],
+    });
+    if (final.stop_reason === "refusal") throw new Error("The planner declined this request.");
+    const text = final.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
+    const done = proposal as { summary: string; ops: PlanOp[] } | null;
+    return { reply: text || done?.summary || "Done.", ops: done?.ops ?? [], summary: done?.summary ?? null };
+  }
+}
+
+/** Earlier chat as alternating user/assistant turns, starting with the user and ending with the assistant. */
+function historyTurns(history: AgentMessage[]): { role: "user" | "assistant"; content: string }[] {
+  const turns: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of history.slice(-12)) {
+    const role = m.role === "agent" ? "assistant" : "user";
+    const last = turns[turns.length - 1];
+    if (last?.role === role) last.content += `\n\n${m.text}`;
+    else turns.push({ role, content: m.text });
+  }
+  while (turns[0]?.role === "assistant") turns.shift();
+  while (turns[turns.length - 1]?.role === "user") turns.pop();
+  return turns;
+}
+
+/** Describes what the homeowner has selected in the editor. */
+function focusLine(bed: Bed, plan: Plan, focus: EditFocus): string {
+  if (focus?.kind === "drift") {
+    const d = describePlan(bed, plan).find((x) => x.driftId === focus.id);
+    if (d) return `Selected in the editor: drift ${d.driftId} (${d.common}, ${d.code}) at u ${d.u.join("–")}, v ${d.v.join("–")}.`;
+  }
+  if (focus?.kind === "zone") {
+    const z = bed.zones.find((x) => x.id === focus.id);
+    if (z) {
+      const pts = effectivePoints(z.shape).map(bedFrame(bed).uv);
+      const u = [Math.min(...pts.map((p) => p.u)), Math.max(...pts.map((p) => p.u))];
+      const v = [Math.min(...pts.map((p) => p.v)), Math.max(...pts.map((p) => p.v))];
+      return `Selected in the editor: zone "${z.name}" at u ${u.join("–")}, v ${v.join("–")}.`;
+    }
+  }
+  return "Nothing is selected in the editor.";
 }
 
 /** Validates one model-proposed op against the plan and library. */

@@ -3,7 +3,7 @@ import { carveExisting, clipToLargest, effectivePoints, frameBounds, fromFrame, 
 import { SEASON_MONTHS, rankPlants } from "./match";
 import { emptyPlan, newId } from "./plan";
 import { plantLibrary, sunClass } from "./plants";
-import { defaultSizeFor } from "./rules";
+import { defaultSizeFor, shrubFitsDepth } from "./rules";
 import type { Bed, Drift, Plan, Plant, Template, TemplateSlot, Zone } from "./types";
 
 export const templates = (templatesJson as unknown as { templates: Template[] }).templates;
@@ -32,13 +32,21 @@ export function fillSlot(slot: TemplateSlot, bed: Bed, avoid: Set<string>): Plan
   const soil = bed.conditions.soil;
   const months = slot.season ? SEASON_MONTHS[slot.season] : [];
   const ranked = rankPlants({ sun, moisture, soil, tier: slot.tier, months, kind: slot.kind });
-  const fits = new Set(ranked.map((r) => r.plant.id));
+  // A shrub slot takes a shrub whenever one suits the site, preferring ones that stay in scale with the bed's depth.
+  let pool = ranked;
+  if (slot.kind === "shrub") {
+    const fb = frameBounds(effectivePoints(bed.outline), bed.conditions.orientation);
+    const shrubs = ranked.filter((r) => r.plant.type === "shrub");
+    const fitting = shrubs.filter((r) => shrubFitsDepth(r.plant, fb.maxD - fb.minD));
+    pool = fitting.length ? fitting : shrubs.length ? shrubs : ranked;
+  }
+  const fits = new Set(pool.map((r) => r.plant.id));
   // Preferred codes win when they fit the site; avoid repeating a plant in one plan.
   for (const code of slot.prefer) {
     const p = plantLibrary.byCode(code);
     if (p && fits.has(p.id) && !avoid.has(p.id) && (!soil || p.soil.includes(soil))) return p;
   }
-  return ranked.find((r) => !avoid.has(r.plant.id))?.plant ?? ranked[0]?.plant;
+  return pool.find((r) => !avoid.has(r.plant.id))?.plant ?? pool[0]?.plant;
 }
 
 /**

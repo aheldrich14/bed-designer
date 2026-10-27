@@ -111,6 +111,8 @@ export type Bed = {
   conditions: Conditions;
   existing: ExistingPlant[];
   photos: Photo[];
+  /** Keys of live checks the user chose to hide. */
+  dismissedChecks: string[];
   createdAt: string;
 };
 

@@ -2,16 +2,18 @@ import {
   carveExisting, circlePolygon, clipToLargest, differenceArea, dist, effectivePoints, frameBounds, fromFrame, intersectionArea,
   polygonArea, regionNames, shapeArea, shapeCentroid, toFrame, unionArea,
 } from "./geometry";
-import { driftCount, driftForCount, newId } from "./plan";
-import { fitsSite, plantLibrary } from "./plants";
-import { MONTH_NAMES, rules as defaultRules, tierOf, type DesignRules } from "./rules";
+import { addDriftOps, applyOps, driftCount, driftForCount, newId } from "./plan";
+import { fitsSite, plantLibrary, sunClass } from "./plants";
+import { MONTH_NAMES, rules as defaultRules, shrubFitsDepth, spacingFor, tierOf, type DesignRules } from "./rules";
 import { kindOf, rankPlants, siteAt } from "./match";
 import type { Bed, Drift, Plan, PlanOp, Plant, Pt } from "./types";
 
 /** A deterministic finding. The review turns these into suggestions. */
 export type Issue = {
   key: string;
-  source: "height-order" | "bloom-gap" | "lone-plants" | "overlap" | "outside-bed" | "site-fit" | "coverage" | "species-count" | "palette" | "existing-plant";
+  source:
+    | "height-order" | "bloom-gap" | "lone-plants" | "overlap" | "outside-bed" | "site-fit" | "coverage" | "species-count" | "palette"
+    | "existing-plant" | "structure";
   severity: "info" | "warn" | "error";
   issue: string;
   detail: string;
@@ -41,6 +43,7 @@ export function runChecks(bed: Bed, plan: Plan, r: DesignRules = defaultRules): 
     ...coverage(ctx),
     ...speciesCount(ctx),
     ...palette(ctx),
+    ...structure(ctx),
   ];
 }
 
@@ -175,7 +178,7 @@ function bloomGaps(ctx: Ctx): Issue[] {
           id: newId("d_"),
           plantId: pick.plant.id,
           size: pick.plant.defaultSize,
-          shape: driftForCount(pick.plant, region.center, rules.preferredDriftCount, rules),
+          shape: driftForCount(pick.plant, region.center, rules.preferredDriftCount, rules, pick.plant.defaultSize),
         };
         ops = [{ op: "addDrift", drift }];
         fix = `Try a drift of ${rules.preferredDriftCount} ${label(pick.plant)} here.`;
@@ -409,6 +412,83 @@ function palette({ plan, rules, plants }: Ctx): Issue[] {
     }
   }
   return issues;
+}
+
+// ---- Structure: shrubs carry the bed through winter -------------------------
+
+function structure({ bed, plan, rules, plants }: Ctx): Issue[] {
+  const share = rules.shrubShare;
+  const outline = effectivePoints(bed.outline);
+  const bedArea = polygonArea(outline);
+  const o = bed.conditions.orientation;
+  const fb = frameBounds(outline, o);
+  const W = fb.maxL - fb.minL;
+  const D = fb.maxD - fb.minD;
+  if (!plan.drifts.length || bedArea < share.minBedAreaSqFt || D < share.minBedDepthFt) return [];
+  const shrubs = plan.drifts.filter((d) => plants.get(d.id)?.type === "shrub");
+  const shrubArea = shrubs.length ? unionArea(shrubs.map((d) => clipToLargest(effectivePoints(d.shape), outline) ?? [])) : 0;
+  const pct = (f: number) => `${Math.round(f * 100)}%`;
+  const now = shrubArea / bedArea;
+
+  if (now > share.max) {
+    return [{
+      key: "structure:heavy",
+      source: "structure",
+      severity: "info",
+      issue: `${pct(now)} of the bed is shrubs`,
+      detail: `Shrubs give structure, but past about ${pct(share.max)} they crowd out the flowers. Around a third shrubs and two thirds perennials and grasses is a common balance.`,
+      driftIds: shrubs.map((d) => d.id),
+      anchor: null,
+      ops: [],
+    }];
+  }
+  if (now >= share.min) return [];
+
+  // Suggest the best-fitting shrub that stays in scale with the bed, anchoring the back corners that have no shrubs yet.
+  const site = { sun: sunClass(bed.conditions.sunHours), moisture: bed.conditions.moisture, soil: bed.conditions.soil };
+  const used = new Set(shrubs.map((d) => d.plantId));
+  const candidates = rankPlants({ ...site, kind: "shrub" })
+    .map((r) => r.plant)
+    .filter((p) => p.type === "shrub" && p.heightIn >= 24 && shrubFitsDepth(p, D, rules))
+    .sort((a, b) => Number(used.has(a.id)) - Number(used.has(b.id)) || Number(!!b.winterInterest) - Number(!!a.winterInterest));
+  const pick = candidates[0];
+  const ops: PlanOp[] = [];
+  let fix = "";
+  if (pick) {
+    const ends = regionNames(o, 3);
+    const shrubL = shrubs.map((d) => toFrame(shapeCentroid(d.shape), o).l);
+    const free = [0, 1].filter((side) => !shrubL.some((l) => (side === 0 ? l < fb.minL + W / 2 : l >= fb.minL + W / 2)));
+    const corners = free.length ? free : [0];
+    const spacingFt = spacingFor(pick, "1gal", rules) / 12;
+    const perPlant = (spacingFt * spacingFt) / rules.staggerFactor;
+    const count = Math.max(1, Math.min(5, Math.ceil((share.target * bedArea - shrubArea) / perPlant / corners.length)));
+    const inset = Math.min(W / 4, Math.max((spacingFt * Math.sqrt(count)) / 2, W * 0.12));
+    const depth = Math.min(D / 2, Math.max(spacingFt / 2, D * 0.25));
+    let working = plan;
+    for (const side of corners) {
+      const center = fromFrame({ l: side === 0 ? fb.minL + inset : fb.maxL - inset, d: fb.minD + depth }, o);
+      const clipped = carveExisting(clipToLargest(effectivePoints(driftForCount(pick, center, count, rules, "1gal")), outline), bed);
+      if (!clipped || polygonArea(clipped) < 1) continue;
+      // Trims the drifts the new shrubs land on, or drops ones that would be left with almost nothing.
+      const add = addDriftOps(working, { id: newId("d_"), plantId: pick.id, size: "1gal", shape: { points: clipped, smooth: true } });
+      working = applyOps(working, add);
+      ops.push(...add);
+    }
+    if (ops.length) {
+      const where = corners.length === 2 ? "both back corners" : `the back of the ${ends[corners[0] === 0 ? 0 : 2]}`;
+      fix = ` Try ${label(pick)}${pick.winterInterest ? ` (${pick.winterInterest} in winter)` : ""} at ${where}.`;
+    }
+  }
+  return [{
+    key: "structure:light",
+    source: "structure",
+    severity: "info",
+    issue: shrubs.length ? `Only ${pct(now)} of the bed is shrubs` : "No shrubs for winter structure",
+    detail: `Perennials die back in winter, leaving a front bed bare from November to April. Shrubs on about a third of the bed (at least ${pct(share.min)}) give it structure all year.${fix}`,
+    driftIds: shrubs.map((d) => d.id),
+    anchor: ops.length ? shapeCentroid((ops[0] as { drift: Drift }).drift.shape) : null,
+    ops,
+  }];
 }
 
 /** Which plan drifts are in bloom in a month (for the month slider). */

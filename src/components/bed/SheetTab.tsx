@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { buildSheet } from "@/lib/sheet";
 import { useEditor } from "@/store/editor";
 import { SceneSvg } from "../SceneSvg";
-import { ScheduleTable } from "./ScheduleTable";
+import { QuantitySummary, ScheduleTable } from "./ScheduleTable";
 import { MonthSlider } from "./MonthSlider";
 import type { BedStateData } from "./BedWorkspace";
 
@@ -46,6 +46,7 @@ export function SheetTab({ data }: { data: BedStateData }) {
       </section>
       <section className="card stack">
         <h2>Plant schedule</h2>
+        <QuantitySummary bed={bed} plan={ed.plan} />
         <ScheduleTable plan={ed.plan} />
       </section>
       {(v?.rationale || notes.length > 0 || bed.existing.length > 0) && (

@@ -5,7 +5,7 @@ import { countFor, newId } from "../plan";
 import { fitsSite, plantLibrary } from "../plants";
 import { defaultSizeFor } from "../rules";
 import { siteAt } from "../match";
-import type { Bed, Drift, Plan, Zone } from "../types";
+import type { Bed, Drift, Plan, Pt, Zone } from "../types";
 
 /**
  * The agent proposes drifts as rectangles in bed fractions (u end to end, v
@@ -28,7 +28,7 @@ export const ProposalSchema = z.object({
       plantCode: z.string().describe("Library code, e.g. ASC-TUB"),
       u: z.array(z.number()).describe("[u0, u1] along the bed, 0 = left end, 1 = right end, as seen from the front"),
       v: z.array(z.number()).describe("[v0, v1] depth, 0 = back edge, 1 = front edge"),
-      size: z.enum(["plug", "1gal"]).optional(),
+      size: z.enum(["plug", "1gal"]).optional().describe("Omit to use the default: plugs for perennials, grasses and sedges, 1 gal for shrubs and ferns. 1 gal plants are spaced at mature spread, so the same drift takes fewer of them."),
     }),
   ),
 });
@@ -44,7 +44,21 @@ export type ValidationResult = {
   summary: string;
 };
 
-const pair = (a: number[]): [number, number] | null => {
+/** A [u0,u1] x [v0,v1] rectangle in bed fractions, as a polygon in bed feet. */
+export function bedRect(bed: Bed, u: [number, number], v: [number, number]): Pt[] {
+  const o = bed.conditions.orientation;
+  const fb = frameBounds(effectivePoints(bed.outline), o);
+  const W = fb.maxL - fb.minL;
+  const D = fb.maxD - fb.minD;
+  return [
+    { l: fb.minL + u[0] * W, d: fb.minD + v[0] * D },
+    { l: fb.minL + u[1] * W, d: fb.minD + v[0] * D },
+    { l: fb.minL + u[1] * W, d: fb.minD + v[1] * D },
+    { l: fb.minL + u[0] * W, d: fb.minD + v[1] * D },
+  ].map((q) => fromFrame(q, o));
+}
+
+export const pair = (a: number[]): [number, number] | null => {
   if (a.length !== 2 || a.some((x) => !Number.isFinite(x))) return null;
   const lo = Math.max(0, Math.min(a[0], a[1]));
   const hi = Math.min(1, Math.max(a[0], a[1]));
@@ -57,17 +71,7 @@ export function proposalToPlan(bed: Bed, p: Proposal): ValidationResult {
   if (outline.length < 3) {
     return { ok: false, errors: ["The bed has no outline yet."], warnings: [], plan: { drifts: [], zoneNotes: {} }, zones: [], summary: "" };
   }
-  const o = bed.conditions.orientation;
-  const fb = frameBounds(outline, o);
-  const W = fb.maxL - fb.minL;
-  const D = fb.maxD - fb.minD;
-  const rect = (u: [number, number], v: [number, number]) =>
-    [
-      { l: fb.minL + u[0] * W, d: fb.minD + v[0] * D },
-      { l: fb.minL + u[1] * W, d: fb.minD + v[0] * D },
-      { l: fb.minL + u[1] * W, d: fb.minD + v[1] * D },
-      { l: fb.minL + u[0] * W, d: fb.minD + v[1] * D },
-    ].map((q) => fromFrame(q, o));
+  const rect = (u: [number, number], v: [number, number]) => bedRect(bed, u, v);
 
   const drifts: Drift[] = [];
   p.drifts.forEach((d, i) => {

@@ -1,5 +1,5 @@
 import { schedule } from "../plan";
-import { MONTHS } from "../rules";
+import { MONTHS, spacingFor } from "../rules";
 import type { Bed, Plan } from "../types";
 
 const cell = (v: string | number) => {
@@ -21,7 +21,7 @@ export function plantListCsv(items: { bed: Bed; plan: Plan }[]): string {
       const key = `${r.size}|${r.plant.id}`;
       const row = rows.get(key) ?? {
         size: r.size, code: r.plant.code, botanical: r.plant.botanical, common: r.plant.common, qty: 0,
-        spacing: r.plant.spacingIn, height: r.plant.heightIn,
+        spacing: spacingFor(r.plant, r.size), height: r.plant.heightIn,
         bloom: r.plant.bloomMonths.map((m) => MONTHS[m - 1]).join(" "), beds: new Set<string>(),
       };
       row.qty += r.quantity;

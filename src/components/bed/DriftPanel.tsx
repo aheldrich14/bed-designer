@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { driftCount, newId } from "@/lib/plan";
 import { plantLibrary } from "@/lib/plants";
-import { MONTHS, tierOf } from "@/lib/rules";
+import { MONTHS, spacingFor, tierOf } from "@/lib/rules";
 import { rankPlants, siteAt } from "@/lib/match";
 import { shapeArea, translateShape } from "@/lib/geometry";
 import { useEditor } from "@/store/editor";
@@ -32,7 +32,7 @@ export function DriftPanel({ bed, drift }: { bed: Bed; drift: Drift }) {
       <div>
         <strong>{plant.common}</strong> <em className="muted">{plant.botanical}</em>
         <div className="hint">
-          {plant.heightIn}" tall · {plant.spacingIn}" spacing · {tierOf(plant)} tier · blooms {bloomRange(plant)} ({plant.bloomColorName}) · {plant.sun.join("/")} sun · {plant.moisture.join("/")}
+          {plant.heightIn}" tall · {spacingFor(plant, drift.size)}" spacing · {tierOf(plant)} tier · blooms {bloomRange(plant)} ({plant.bloomColorName}) · {plant.sun.join("/")} sun · {plant.moisture.join("/")}
         </div>
         <div className="hint">{plant.notes}</div>
       </div>

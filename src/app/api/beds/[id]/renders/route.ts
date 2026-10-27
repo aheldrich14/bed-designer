@@ -16,7 +16,8 @@ export const GET = route<P>(async (req, { params }) => {
   const version = requireVersion(id, url.searchParams.get("version"));
   const month = Number(url.searchParams.get("month") ?? 7);
   const viewpoint = url.searchParams.get("viewpoint") === "overhead" ? "overhead" : "street";
-  return json({ renders: repo.listRenders(version.id), prompt: buildRenderPrompt(bed, version, month, viewpoint) });
+  const project = repo.getProject(bed.projectId);
+  return json({ renders: repo.listRenders(version.id), prompt: buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: true }) });
 });
 
 export const POST = route<P>(async (req, { params }) => {

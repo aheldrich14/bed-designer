@@ -16,10 +16,14 @@ export class GeminiRenderProvider implements RenderProvider {
     return !!this.apiKey;
   }
 
-  async render({ prompt, reference }: RenderRequest): Promise<RenderOutput> {
+  async render({ prompt, images }: RenderRequest): Promise<RenderOutput> {
     if (!this.apiKey) throw new Error("Set GEMINI_API_KEY to generate renders.");
-    const parts: GeminiPart[] = [{ text: prompt }];
-    if (reference) parts.push({ inline_data: { mime_type: reference.mimeType, data: reference.data.toString("base64") } });
+    // Each image is preceded by its label so the prompt can refer to "image 1", "image 2".
+    const parts: GeminiPart[] = images.flatMap((img, i): GeminiPart[] => [
+      { text: `Image ${i + 1}:` },
+      { inline_data: { mime_type: img.mimeType, data: img.data.toString("base64") } },
+    ]);
+    parts.push({ text: prompt });
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },

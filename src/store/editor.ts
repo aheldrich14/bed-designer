@@ -9,6 +9,8 @@ export type Snapshot = {
   outline: Shape;
   zones: Zone[];
   existing: ExistingPlant[];
+  /** Live-check keys the user has hidden. */
+  dismissedChecks: string[];
   plan: Plan;
 };
 
@@ -40,9 +42,11 @@ type EditorState = Snapshot & {
   select: (s: Selection) => void;
   setMonth: (m: number | null) => void;
   markSaved: (versionId: string | null) => void;
+  /** Hides a live check, or shows it again. */
+  setDismissed: (key: string, dismissed: boolean) => void;
 };
 
-const snap = (s: Snapshot): Snapshot => ({ outline: s.outline, zones: s.zones, existing: s.existing, plan: s.plan });
+const snap = (s: Snapshot): Snapshot => ({ outline: s.outline, zones: s.zones, existing: s.existing, dismissedChecks: s.dismissedChecks, plan: s.plan });
 export const snapshotKey = (s: Snapshot) => JSON.stringify(snap(s));
 
 const LIMIT = 200;
@@ -54,6 +58,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   outline: { points: [] },
   zones: [],
   existing: [],
+  dismissedChecks: [],
   plan: { drifts: [], zoneNotes: {} },
   past: [],
   future: [],
@@ -61,7 +66,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   month: null,
 
   load: (bed, plan, versionId) => {
-    const s: Snapshot = { outline: bed.outline, zones: bed.zones, existing: bed.existing, plan: { drifts: plan.drifts, zoneNotes: plan.zoneNotes ?? {} } };
+    const s: Snapshot = { outline: bed.outline, zones: bed.zones, existing: bed.existing, dismissedChecks: bed.dismissedChecks ?? [], plan: { drifts: plan.drifts, zoneNotes: plan.zoneNotes ?? {} } };
     set({ ...s, bedId: bed.id, baseVersionId: versionId, savedKey: snapshotKey(s), past: [], future: [], selection: null });
   },
   commit: (fn) => {
@@ -89,6 +94,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   select: (selection) => set({ selection }),
   setMonth: (month) => set({ month }),
   markSaved: (versionId) => set({ baseVersionId: versionId, savedKey: snapshotKey(snap(get())) }),
+  setDismissed: (key, dismissed) =>
+    get().commit((s) => ({ dismissedChecks: dismissed ? [...new Set([...s.dismissedChecks, key])] : s.dismissedChecks.filter((k) => k !== key) })),
 }));
 
 export function useDirty(): boolean {

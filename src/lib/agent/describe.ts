@@ -49,6 +49,7 @@ export function describeBed(bed: Bed) {
       preferredPlantsPerDrift: rules.preferredDriftCount,
       bloomWindow: `${MONTHS[rules.bloomWindow[0] - 1]}–${MONTHS[rules.bloomWindow[1] - 1]} in each third of the bed`,
       maxSpecies: Math.max(4, Math.round((shapeArea(bed.outline) / 100) * rules.maxSpeciesPer100SqFt)),
+      shrubShareOfArea: `about ${Math.round(rules.shrubShare.target * 100)}% (${Math.round(rules.shrubShare.min * 100)}–${Math.round(rules.shrubShare.max * 100)}%) when the bed is at least ${rules.shrubShare.minBedDepthFt} ft deep`,
     },
   };
 }

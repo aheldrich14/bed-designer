@@ -3,6 +3,9 @@ import { runChecks } from "./checks";
 import { sampleBed } from "./fixtures";
 import { applyOps } from "./plan";
 import { applyTemplate, getTemplate, templatesFor } from "./templates";
+import { shapeArea, shapeCentroid } from "./geometry";
+import { plantLibrary } from "./plants";
+import { rules } from "./rules";
 import type { Plan } from "./types";
 
 const rect = (x: number, y: number, w: number, h: number) => ({
@@ -68,5 +71,43 @@ describe("templates", () => {
     expect(zones.map((z) => z.name)).toEqual(["Back", "Middle", "Front edge"]);
     const issues = runChecks(bed, plan);
     expect(issues.filter((i) => ["site-fit", "outside-bed", "overlap", "height-order"].includes(i.source))).toEqual([]);
+  });
+});
+
+describe("shrub structure", () => {
+  const bed = sampleBed(); // 30 x 8 ft, full sun, medium moisture, loam
+  const shrubShare = (plan: Plan) => {
+    const area = plan.drifts.filter((d) => plantLibrary.get(d.plantId)?.type === "shrub").reduce((s, d) => s + shapeArea(d.shape), 0);
+    return area / shapeArea(bed.outline);
+  };
+
+  it("flags an all-perennial bed and adds a shrub at the back", () => {
+    const { plan } = applyTemplate(getTemplate("pollinator-border")!, bed);
+    const issue = runChecks(bed, plan).find((i) => i.key === "structure:light")!;
+    expect(issue.issue).toBe("No shrubs for winter structure");
+    expect(issue.ops[0].op).toBe("addDrift");
+    const added = applyOps(plan, issue.ops);
+    const shrub = added.drifts.find((d) => plantLibrary.get(d.plantId)?.type === "shrub")!;
+    expect(shrub.size).toBe("1gal");
+    expect(shrubShare(added)).toBeGreaterThan(rules.shrubShare.min);
+    // West-facing bed: the back (house side) is the high-x half.
+    expect(shapeCentroid(shrub.shape).x).toBeGreaterThan(4);
+    // The perennials underneath are trimmed, so the fix doesn't create overlaps.
+    expect(runChecks(bed, added).some((i) => i.source === "overlap" || i.source === "structure")).toBe(false);
+  });
+
+  it("skips beds too narrow for shrubs", () => {
+    const narrow = sampleBed({ outline: rect(0, 0, 2, 30) });
+    const { plan } = applyTemplate(getTemplate("pollinator-border")!, narrow);
+    expect(runChecks(narrow, plan).some((i) => i.source === "structure")).toBe(false);
+  });
+
+  it("the shrub-framed template lands near a third shrubs and passes", () => {
+    const { plan } = applyTemplate(getTemplate("shrub-framed-foundation")!, bed);
+    const share = shrubShare(plan);
+    expect(share).toBeGreaterThan(0.25);
+    expect(share).toBeLessThan(0.42);
+    expect(plan.drifts.filter((d) => plantLibrary.get(d.plantId)?.type === "shrub").length).toBe(3);
+    expect(runChecks(bed, plan).some((i) => i.source === "structure")).toBe(false);
   });
 });

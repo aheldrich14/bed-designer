@@ -73,6 +73,7 @@ export function createBed(projectId: string, input: Partial<Bed> & { name: strin
     conditions: { ...DEFAULT_CONDITIONS, ...input.conditions },
     existing: input.existing ?? [],
     photos: input.photos ?? [],
+    dismissedChecks: input.dismissedChecks ?? [],
     createdAt: now(),
   };
   getDb().insert(t.beds).values(bed).run();

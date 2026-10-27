@@ -41,7 +41,10 @@ export function BloomTab({ data }: { data: BedStateData }) {
       }),
     [regions, ed.plan],
   );
-  const warnings = useMemo(() => runChecks(bed, ed.plan).filter((i) => i.source === "bloom-gap" || i.source === "height-order" || i.source === "palette"), [bed, ed.plan]);
+  const warnings = useMemo(
+    () => runChecks(bed, ed.plan).filter((i) => (i.source === "bloom-gap" || i.source === "height-order" || i.source === "palette") && !ed.dismissedChecks.includes(i.key)),
+    [bed, ed.plan, ed.dismissedChecks],
+  );
   const blooming = plants.filter((p) => p.bloomMonths.includes(month));
   const [w0, w1] = rules.bloomWindow;
 

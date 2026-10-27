@@ -1,8 +1,27 @@
 "use client";
 
 import { schedule } from "@/lib/plan";
-import { MONTHS, tierOf } from "@/lib/rules";
-import type { Plan } from "@/lib/types";
+import { MONTHS, spacingFor, tierOf } from "@/lib/rules";
+import { bedFrame } from "@/lib/agent/describe";
+import { formatFtIn, shapeArea } from "@/lib/geometry";
+import type { Bed, Plan } from "@/lib/types";
+
+/** Bed size and planting density, so a quantity that looks off can be traced to the outline or the spacing. */
+export function QuantitySummary({ bed, plan }: { bed: Bed; plan: Plan }) {
+  const rows = schedule(plan);
+  if (!rows.length) return null;
+  const area = shapeArea(bed.outline);
+  const { W, D } = bedFrame(bed);
+  const plugs = rows.filter((r) => r.size === "plug").reduce((s, r) => s + r.quantity, 0);
+  const gallons = rows.filter((r) => r.size === "1gal").reduce((s, r) => s + r.quantity, 0);
+  return (
+    <small>
+      Bed about {formatFtIn(W)} long × {formatFtIn(D)} deep, {Math.round(area)} sq ft ·{" "}
+      {[plugs && `${plugs} plugs`, gallons && `${gallons} × 1 gal`].filter(Boolean).join(" + ")} · {area > 0 ? ((plugs + gallons) / area).toFixed(1) : "—"} plants per sq ft.
+      {" "}If the size looks wrong, check the scale calibration on the project aerial.
+    </small>
+  );
+}
 
 export function ScheduleTable({ plan, selectedPlantId, onPick }: { plan: Plan; selectedPlantId?: string | null; onPick?: (plantId: string) => void }) {
   const rows = schedule(plan);
@@ -24,7 +43,7 @@ export function ScheduleTable({ plan, selectedPlantId, onPick }: { plan: Plan; s
               <td>{r.plant.common}</td>
               <td>{r.size === "plug" ? "Plug" : "1 gal"}</td>
               <td><strong>{r.quantity}</strong></td>
-              <td>{r.plant.spacingIn}" o.c.</td>
+              <td>{spacingFor(r.plant, r.size)}" o.c.</td>
               <td>{r.plant.heightIn}"</td>
               <td>{r.plant.bloomMonths.length ? r.plant.bloomMonths.map((m) => MONTHS[m - 1]).join(" ") : "—"}</td>
               <td>{tierOf(r.plant)}</td>

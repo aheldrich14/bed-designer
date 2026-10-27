@@ -49,6 +49,6 @@ describe("outputs from one plan", () => {
     const jan = buildRenderPrompt(zoned, plan, 1, "street");
     expect(july).toMatch(/in bloom/);
     expect(jan).toMatch(/dormant/);
-    expect(july).toContain("Keep these existing plants as they are: Peony.");
+    expect(july).toContain("The only existing plants that stay are: Peony");
   });
 });
