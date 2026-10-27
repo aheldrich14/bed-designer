@@ -40,6 +40,10 @@ export function getDb(): Db {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   sqlite.exec(schema.BOOTSTRAP_SQL);
+  for (const c of schema.ADDED_COLUMNS) {
+    const cols = sqlite.prepare(`PRAGMA table_info(${c.table})`).all() as { name: string }[];
+    if (!cols.some((x) => x.name === c.column)) sqlite.exec(c.sql);
+  }
   globalForDb.__bedDb = drizzle(sqlite, { schema });
   return globalForDb.__bedDb;
 }

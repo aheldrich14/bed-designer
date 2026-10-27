@@ -47,7 +47,7 @@ Everything works without keys: the agent draft and design review fall back to a 
 - **Templates**: `data/templates.json`, drift patterns as fractions of the bed (u end to end, v back to front).
 - **Plan versions** are immutable snapshots. Edits, template starts, agent drafts and applied suggestions each create a version. Suggestions store their fix as a plan diff (`PlanOp[]`).
 - **Agent** (`src/lib/agent`): a `Planner` interface with a Claude implementation (typed tools: read project state, search plants, request missing info, validate plan, submit plan) and the offline heuristic. Agent output is JSON validated on the server: library-only plants, site fit, overlaps, height order. Claude calls use the server-side refusal fallback (`fallbacks: "default"`).
-- **Renders** (`src/lib/render`): a `RenderProvider` interface with a Gemini implementation; the prompt builder describes each zone's plants, heights and what is in bloom that month.
+- **Renders** (`src/lib/render`): a `RenderProvider` interface with a Gemini implementation; the prompt builder describes each zone's plants, heights and what is in bloom that month, plus measured distances to the house and walks. Each render also sends a to-scale overhead site plan (`render/site.ts`, rasterized with resvg in `render/raster.ts`) as a second image so the model gets the bed's size and position right.
 
 ## Scripts
 

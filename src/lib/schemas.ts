@@ -43,6 +43,7 @@ export const BedPatchZ = z
     conditions: ConditionsZ,
     existing: z.array(ExistingZ),
     photos: z.array(PhotoZ),
+    dismissedChecks: z.array(z.string()),
   })
   .partial();
 

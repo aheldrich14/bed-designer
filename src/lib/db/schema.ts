@@ -29,6 +29,7 @@ export const beds = sqliteTable("beds", {
   conditions: text("conditions", { mode: "json" }).$type<Conditions>().notNull(),
   existing: text("existing", { mode: "json" }).$type<ExistingPlant[]>().notNull(),
   photos: text("photos", { mode: "json" }).$type<Photo[]>().notNull(),
+  dismissedChecks: text("dismissed_checks", { mode: "json" }).$type<string[]>().notNull(),
   createdAt: text("created_at").notNull(),
 });
 
@@ -84,7 +85,8 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS beds (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name TEXT NOT NULL, origin TEXT NOT NULL, outline TEXT NOT NULL, zones TEXT NOT NULL,
-  conditions TEXT NOT NULL, existing TEXT NOT NULL, photos TEXT NOT NULL, created_at TEXT NOT NULL
+  conditions TEXT NOT NULL, existing TEXT NOT NULL, photos TEXT NOT NULL,
+  dismissed_checks TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS plan_versions (
   id TEXT PRIMARY KEY, bed_id TEXT NOT NULL REFERENCES beds(id) ON DELETE CASCADE, parent_id TEXT,
@@ -107,3 +109,8 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   checklist TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 `;
+
+/** Columns added after the first release, applied to existing databases on startup. */
+export const ADDED_COLUMNS: { table: string; column: string; sql: string }[] = [
+  { table: "beds", column: "dismissed_checks", sql: "ALTER TABLE beds ADD COLUMN dismissed_checks TEXT NOT NULL DEFAULT '[]'" },
+];

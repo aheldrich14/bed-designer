@@ -8,8 +8,12 @@ import { getPlanner, heuristicPlanner } from "./agent";
 import type { DraftResult, Planner } from "./agent/planner";
 import { buildRenderPrompt } from "./render/prompt";
 import { renderProvider } from "./render/gemini";
+import type { RenderImage } from "./render/provider";
+import { svgToPng } from "./render/raster";
+import { sitePlanSheet } from "./render/site";
+import { sheetToSvg } from "./export/svg";
 import { fileStore, extFor } from "./storage";
-import type { Bed, MissingInfoItem, Plan, PlanVersion } from "./types";
+import type { Bed, MissingInfoItem, Plan, PlanVersion, Project } from "./types";
 
 // Use cases shared by the API routes.
 
@@ -126,7 +130,8 @@ export async function runDraft(bedId: string) {
 export async function runReview(bedId: string, versionId?: string | null) {
   const bed = requireBed(bedId);
   const version = requireVersion(bedId, versionId);
-  const issues = runChecks(bed, version);
+  // Checks the user dismissed stay hidden in the review too.
+  const issues = runChecks(bed, version).filter((i) => !bed.dismissedChecks.includes(i.key));
   const { result, planner, note } = await withFallback((p) => p.review({ bed, plan: version, issues }));
   const suggestions = repo.replaceOpenSuggestions(version.id, result.suggestions);
   return { planner, message: note ? `${result.message} (${note})` : result.message, suggestions };
@@ -152,14 +157,22 @@ export function applySuggestion(id: string) {
   return next;
 }
 
+/** PNG of the to-scale overhead site plan, with the aerial underneath when there is one. */
+export async function sitePlanPng(bed: Bed, plan: Plan, project: Project, month: number | null): Promise<Buffer> {
+  const aerial = project.aerialUrl ? await fileStore.read(project.aerialUrl) : null;
+  const aerialHref = aerial ? `data:${aerial.contentType};base64,${aerial.data.toString("base64")}` : null;
+  const sheet = sitePlanSheet(bed, plan, project, { month, aerialHref, width: 1200 });
+  return svgToPng(sheetToSvg(sheet), sheet.width);
+}
+
 export async function renderMonth(bedId: string, versionId: string, month: number, viewpoint: "street" | "overhead", force: boolean) {
   const bed = requireBed(bedId);
   const version = requireVersion(bedId, versionId);
   const cached = repo.findRender(version.id, month, viewpoint);
   if (cached?.imageUrl && !force) return cached;
 
-  const prompt = buildRenderPrompt(bed, version, month, viewpoint);
   const project = repo.getProject(bed.projectId)!;
+  let prompt = buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: true });
   const refUrl = viewpoint === "street" ? bed.photos.find((p) => p.isStreetView)?.url ?? bed.photos[0]?.url : project.aerialUrl;
   if (!renderProvider.available) {
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: null, error: "Set GEMINI_API_KEY to generate renders. The prompt is shown below." });
@@ -168,8 +181,16 @@ export async function renderMonth(bedId: string, versionId: string, month: numbe
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: null, error: "Upload a street-level photo of the bed first." });
   }
   const ref = refUrl ? await fileStore.read(refUrl) : null;
+  const images: RenderImage[] = ref ? [{ data: ref.data, mimeType: ref.contentType }] : [];
+  // The to-scale overhead plan tells the model how big the bed is and how far it sits from the house and walk.
   try {
-    const out = await renderProvider.render({ prompt, reference: ref ? { data: ref.data, mimeType: ref.contentType } : null });
+    images.push({ data: await sitePlanPng(bed, version, project, month), mimeType: "image/png" });
+  } catch (e) {
+    console.error("Site plan image failed; rendering without it.", e);
+    prompt = buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: false });
+  }
+  try {
+    const out = await renderProvider.render({ prompt, images });
     const url = await fileStore.save("renders", out.data, extFor(out.mimeType));
     return repo.saveRender({ planVersionId: version.id, month, viewpoint, prompt, imageUrl: url, error: null });
   } catch (e) {

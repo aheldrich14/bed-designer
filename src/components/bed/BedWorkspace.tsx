@@ -85,7 +85,7 @@ export function BedWorkspace({ bedId }: { bedId: string }) {
       setSaving(true);
       try {
         const s = useEditor.getState();
-        await api(`/api/beds/${bedId}`, { method: "PATCH", json: { outline: s.outline, zones: s.zones, existing: s.existing } });
+        await api(`/api/beds/${bedId}`, { method: "PATCH", json: { outline: s.outline, zones: s.zones, existing: s.existing, dismissedChecks: s.dismissedChecks } });
         const planChanged = !data.version || JSON.stringify(s.plan) !== JSON.stringify({ drifts: data.version.drifts, zoneNotes: data.version.zoneNotes });
         let versionId = data.version?.id ?? null;
         if (planChanged) {

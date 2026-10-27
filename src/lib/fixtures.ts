@@ -12,6 +12,7 @@ export function sampleBed(overrides: Partial<Bed> = {}): Bed {
     conditions: { orientation: "W", sunHours: 7, soil: "loam", moisture: "medium", canopy: "none", notes: "" },
     existing: [],
     photos: [],
+    dismissedChecks: [],
     createdAt: new Date(0).toISOString(),
     ...overrides,
   };

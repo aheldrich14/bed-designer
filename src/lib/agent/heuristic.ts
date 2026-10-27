@@ -42,7 +42,7 @@ export class HeuristicPlanner implements Planner {
   }
 
   async review({ bed, plan, issues }: ReviewInput): Promise<ReviewResult> {
-    const suggestions = (issues.length ? issues : runChecks(bed, plan)).map(issueToSuggestion);
+    const suggestions = issues.map(issueToSuggestion);
     return {
       suggestions,
       message: suggestions.length

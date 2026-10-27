@@ -1,6 +1,9 @@
+export type RenderImage = { data: Buffer; mimeType: string };
+
 export type RenderRequest = {
   prompt: string;
-  reference?: { data: Buffer; mimeType: string } | null;
+  /** Reference images in the order the prompt names them (image 1, image 2, ...). */
+  images: RenderImage[];
 };
 
 export type RenderOutput = { data: Buffer; mimeType: string };

@@ -88,6 +88,14 @@ export function RendersTab({ data, ensureSaved }: { data: BedStateData; ensureSa
           {!SERIES.includes(previewMonth) && <button className="small" disabled={!v || busy != null} onClick={() => render(previewMonth)}>Render {MONTH_NAMES[previewMonth - 1]}</button>}
         </div>
         <pre className="prompt">{prompt || "Create a plan to see the prompt."}</pre>
+        {v && (
+          <details>
+            <summary className="hint">Scale reference sent with each render</summary>
+            <p className="hint">A to-scale overhead plan goes to the image model with the photo, so it can match the bed's size and its distance from the house and walk.</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/beds/${data.bed.id}/renders/site-plan?version=${v.id}&month=${previewMonth}`} alt="Overhead site plan sent with renders" style={{ maxWidth: "100%", borderRadius: 8 }} />
+          </details>
+        )}
         {renders.filter((r) => !SERIES.includes(r.month) && r.viewpoint === viewpoint && r.imageUrl).map((r) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img key={r.id} src={r.imageUrl!} alt={MONTH_NAMES[r.month - 1]} style={{ maxWidth: 480, borderRadius: 8 }} />

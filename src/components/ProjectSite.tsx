@@ -23,11 +23,11 @@ const MODE_HELP: Record<Mode, string> = {
   pan: "Drag to pan, scroll to zoom.",
   calibrate: "Click both ends of something you've measured (porch, walk, garage door), then enter its length.",
   origin: "Click a fixed reference point, such as a house corner. Positions are measured from here.",
-  bed: "Click around the bed edge. Finish with the button, Enter, or a double-click.",
-  house: "Click the house corners. Finish with Enter or a double-click.",
-  walk: "Click around the walk. Finish with Enter or a double-click.",
-  driveway: "Click around the driveway. Finish with Enter or a double-click.",
-  other: "Click around the feature. Finish with Enter or a double-click.",
+  bed: "Click around the bed edge. Close it by clicking the first point, pressing Enter or Finish. Backspace undoes a point, Esc cancels.",
+  house: "Click the house corners. Close it by clicking the first point, pressing Enter or Finish. Esc cancels.",
+  walk: "Click around the walk. Close it by clicking the first point, pressing Enter or Finish. Esc cancels.",
+  driveway: "Click around the driveway. Close it by clicking the first point, pressing Enter or Finish. Esc cancels.",
+  other: "Click around the feature. Close it by clicking the first point, pressing Enter or Finish. Esc cancels.",
   tree: "Click the trunk, then click the edge of the canopy.",
 };
 
@@ -60,15 +60,24 @@ export function ProjectSite({ projectId }: { projectId: string }) {
   const toPx = useCallback((ft: Pt): Pt => (cal ? { x: cal.originPx.x + ft.x * cal.pxPerFt, y: cal.originPx.y + ft.y * cal.pxPerFt } : ft), [cal]);
   const toFt = useCallback((px: Pt): Pt => (cal ? { x: (px.x - cal.originPx.x) / cal.pxPerFt, y: (px.y - cal.originPx.y) / cal.pxPerFt } : px), [cal]);
 
+  const lineW = view.w / 400;
+
   const patchProject = async (patch: Partial<Project>) => {
     const { project: p } = await api<{ project: Project }>(`/api/projects/${projectId}`, { method: "PATCH", json: patch });
     setProject(p);
   };
 
+  /** Leaves drawing mode so further clicks don't start a new shape. */
+  const stopDrawing = useCallback(() => {
+    setDraft([]);
+    setHover(null);
+    setMode("pan");
+  }, []);
+
   const finish = useCallback(async (pts: Pt[]) => {
     if (!project || pts.length < 3) return;
     const ft = pts.map(toFt);
-    setDraft([]);
+    stopDrawing();
     if (mode === "bed") {
       const name = window.prompt("Name this bed", beds.length ? `Bed ${beds.length + 1}` : "Front bed");
       if (!name) return;
@@ -84,16 +93,21 @@ export function ProjectSite({ projectId }: { projectId: string }) {
       const feature: SiteFeature = { id: newId("f_"), kind: mode, label, shape: { points: ft } };
       await patchProject({ features: [...project.features, feature] });
     }
-  }, [project, toFt, mode, beds.length, projectId, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [project, toFt, mode, beds.length, projectId, load, stopDrawing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDraft([]);
+      if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+      if (e.key === "Escape" && mode !== "pan") stopDrawing();
       if (e.key === "Enter" && draft.length >= 3) finish(draft);
+      if (e.key === "Backspace" && draft.length) {
+        e.preventDefault();
+        setDraft(draft.slice(0, -1));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [draft, finish]);
+  }, [draft, finish, mode, stopDrawing]);
 
   const onClick = async (e: React.MouseEvent) => {
     if (!project || mode === "pan") return;
@@ -126,6 +140,8 @@ export function ProjectSite({ projectId }: { projectId: string }) {
       return;
     }
     if (e.detail === 2) return finish(draft);
+    // Clicking back on the first point closes the shape.
+    if (draft.length >= 3 && dist(p, draft[0]) < lineW * 8) return finish(draft);
     setDraft([...draft, p]);
   };
 
@@ -160,7 +176,6 @@ export function ProjectSite({ projectId }: { projectId: string }) {
     setMode("calibrate");
   };
 
-  const lineW = view.w / 400;
   const draftLen = useMemo(() => {
     if (mode !== "calibrate" || !draft.length || !hover || !cal) return null;
     return dist(draft[0], hover) / cal.pxPerFt;
@@ -188,6 +203,8 @@ export function ProjectSite({ projectId }: { projectId: string }) {
                 </button>
               ))}
               {draft.length >= 3 && <button className="primary" onClick={() => finish(draft)}>Finish</button>}
+              {draft.length > 0 && <button onClick={() => setDraft(draft.slice(0, -1))}>Undo point</button>}
+              {mode !== "pan" && <button onClick={stopDrawing}>{draft.length ? "Cancel" : "Done"}</button>}
               <label className="row hint" style={{ marginLeft: "auto" }}>
                 Aerial
                 <input type="range" min={0.2} max={1} step={0.05} value={opacity} onChange={(e) => setOpacity(+e.target.value)} />
@@ -246,7 +263,10 @@ export function ProjectSite({ projectId }: { projectId: string }) {
                 strokeDasharray={`${lineW * 4} ${lineW * 2}`}
               />
             )}
-            {draft.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={lineW * 3} fill="#fff" stroke="#e0662b" strokeWidth={lineW} />)}
+            {draft.map((p, i) => {
+              const closes = i === 0 && draft.length >= 3 && hover != null && dist(hover, p) < lineW * 8;
+              return <circle key={i} cx={p.x} cy={p.y} r={lineW * (closes ? 5 : 3)} fill={closes ? "#e0662b" : "#fff"} stroke="#e0662b" strokeWidth={lineW} />;
+            })}
           </svg>
         ) : (
           <div className="empty">No aerial yet. You can still create a bed by its dimensions on the right.</div>

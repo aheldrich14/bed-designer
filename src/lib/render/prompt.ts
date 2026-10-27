@@ -1,9 +1,10 @@
-import { effectivePoints, intersectionArea, regionNames, shapeCentroid } from "../geometry";
+import { effectivePoints, formatFtIn, intersectionArea, regionNames, shapeCentroid } from "../geometry";
 import { countFor } from "../plan";
 import { plantLibrary } from "../plants";
 import { MONTH_NAMES } from "../rules";
 import { bedFrame } from "../agent/describe";
-import type { Bed, Drift, Plan } from "../types";
+import { describeSite } from "./site";
+import type { Bed, Drift, Plan, Project } from "../types";
 
 export const RENDER_MONTHS = [5, 7, 9, 1];
 
@@ -82,23 +83,64 @@ function describeLayout(bed: Bed, plan: Plan, month: number): string[] {
     .map((b) => `${b.name}: ${b.drifts.sort((x, y) => x.u - y.u).map((d) => d.text).join("; ")}.`);
 }
 
-export function buildRenderPrompt(bed: Bed, plan: Plan, month: number, viewpoint: "street" | "overhead"): string {
+export type RenderPromptOptions = {
+  project?: Project | null;
+  /** A to-scale overhead site plan is attached as the second image. */
+  sitePlan?: boolean;
+};
+
+const DOOR_FT = 7;
+
+/** Height cues tied to things in the photo, so plants come out at true size. */
+function scaleLines(plan: Plan, month: number): string[] {
+  const heights = plan.drifts.map((d) => plantLibrary.get(d.plantId)?.heightIn).filter((h): h is number => h != null).sort((a, b) => a - b);
+  if (!heights.length) return [];
+  const factor = month <= 3 || month >= 11 ? 0.8 : month === 4 ? 0.25 : month === 5 ? 0.5 : 1;
+  const tallest = (heights[heights.length - 1] * factor) / 12;
+  const typical = (heights[Math.floor(heights.length / 2)] * factor) / 12;
+  const share = (ft: number) => (ft / DOOR_FT < 0.3 ? "well under half" : ft / DOOR_FT < 0.6 ? "about half" : ft / DOOR_FT < 0.85 ? "about two thirds" : "nearly all");
+  return [
+    `Plant size: the tallest plants are about ${formatFtIn(tallest)} tall right now, ${share(tallest)} the height of a ${DOOR_FT} ft front door; most are about ${formatFtIn(typical)} (knee to waist high on an adult). Each plant is only 1 to 2 ft across. Keep every plant at this true scale relative to the house, door and windows; do not enlarge them.`,
+  ];
+}
+
+export function buildRenderPrompt(bed: Bed, plan: Plan, month: number, viewpoint: "street" | "overhead", opts: RenderPromptOptions = {}): string {
   const { W, D } = bedFrame(bed);
   const layout = describeLayout(bed, plan, month);
   const keep = bed.existing.filter((e) => e.action === "keep").map((e) => e.name);
   const remove = bed.existing.filter((e) => e.action === "remove").map((e) => e.name);
+  const site = describeSite(bed, opts.project);
+  const images =
+    viewpoint === "street"
+      ? opts.sitePlan
+        ? "Image 1 is a photo of the house to edit. Image 2 is a to-scale overhead site plan of the same yard (north up, dimensions in feet): the bed outline is drawn in brown with its planting drifts colored, the house in dark gray, walks and drive in light gray, and orange dashed lines mark measured gaps. Use image 2 only to judge the bed's true size and where it sits relative to the house, walk and lawn; do not draw the plan, its labels or its colors into the photo."
+        : "Edit the attached photo of the house."
+      : opts.sitePlan
+        ? "Image 1 is an aerial photo of the property. Image 2 is a to-scale site plan of the same area (north up, dimensions in feet) with the bed outlined in brown and its planting drifts colored. Match the bed's size, shape and position to image 2 exactly."
+        : "Use the attached aerial image for context.";
   const intro =
     viewpoint === "street"
-      ? `Edit this photo of the house to show the ${bed.name.toLowerCase()} (about ${Math.round(W)} ft long and ${Math.round(D)} ft deep, facing ${bed.conditions.orientation}) replanted as a native perennial garden. Keep the house, walks, driveway, lawn, trees, sky and camera angle exactly as they are; change only the planting bed.`
-      : `Using this aerial image for context, render a top-down view of the ${bed.name.toLowerCase()} (about ${Math.round(W)} by ${Math.round(D)} ft) replanted as a native perennial garden.`;
+      ? `${images}\nShow the ${bed.name.toLowerCase()} (about ${Math.round(W)} ft long and ${Math.round(D)} ft deep, facing ${bed.conditions.orientation}) replanted as a native perennial garden. Keep the house, walks, driveway, lawn, trees, sky and camera angle exactly as they are; change only the planting bed, and keep the bed's edges where they are now.`
+      : `${images}\nRender a top-down view of the ${bed.name.toLowerCase()} (about ${Math.round(W)} by ${Math.round(D)} ft) replanted as a native perennial garden.`;
+  const existing =
+    viewpoint === "street"
+      ? [
+          `Clear the bed first: remove every shrub, perennial, groundcover and weed now growing inside the bed${remove.length ? `, including the ${remove.join(", ")}` : ""}. ${keep.length ? `The only existing plants that stay are: ${keep.join(", ")}; leave them exactly as they are.` : "No existing plants stay."} Nothing else from the old planting may remain in the new picture.`,
+        ]
+      : [
+          keep.length ? `Keep these existing plants as they are: ${keep.join(", ")}.` : "",
+          remove.length ? `These existing plants have been removed: ${remove.join(", ")}.` : "",
+        ];
   return [
     intro,
+    site.length ? "Scale and placement, measured on the site plan:" : "",
+    ...site.map((l) => `- ${l}`),
+    ...scaleLines(plan, month),
     `Month: ${MONTH_NAMES[month - 1]}. ${SEASON[month]}`,
+    ...existing,
     "Plants grow in naturalistic, interlocking drifts with shredded hardwood mulch between them; tallest plants at the back, shortest along the front edge.",
     "Planting, left to right as seen from the street:",
     ...layout,
-    keep.length ? `Keep these existing plants as they are: ${keep.join(", ")}.` : "",
-    remove.length ? `These existing plants have been removed: ${remove.join(", ")}.` : "",
     "Photorealistic, natural daylight, same lens and perspective as the reference. No text, labels or people.",
   ]
     .filter(Boolean)

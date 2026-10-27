@@ -100,6 +100,31 @@ export function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+/** Closest point to p on segment ab. */
+export function closestOnSegment(p: Pt, a: Pt, b: Pt): Pt {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+/** Shortest gap between two polygons' edges (0 when one has a vertex inside the other), with the closest points. */
+export function polygonGap(a: Pt[], b: Pt[]): { d: number; pa: Pt; pb: Pt } {
+  let best = { d: Infinity, pa: a[0], pb: b[0] };
+  for (const [from, to, swap] of [[a, b, false], [b, a, true]] as const) {
+    for (const p of from) {
+      if (to.length >= 3 && pointInPolygon(p, to)) return { d: 0, pa: p, pb: p };
+      for (let i = 0; i < to.length; i++) {
+        const q = closestOnSegment(p, to[i], to[(i + 1) % to.length]);
+        const d = dist(p, q);
+        if (d < best.d) best = swap ? { d, pa: q, pb: p } : { d, pa: p, pb: q };
+      }
+    }
+  }
+  return best;
+}
+
 export function edgeLengths(points: Pt[]): number[] {
   return points.map((p, i) => dist(p, points[(i + 1) % points.length]));
 }

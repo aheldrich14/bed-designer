@@ -28,10 +28,10 @@ type DragStart = { kind: "move"; target: Target } | { kind: "vertex"; target: Ta
 const TOOL_HELP: Record<Tool, string> = {
   select: "Click a drift to select it. Drag to move; drag the white handles to reshape, the small ones to add a point; double-click a handle to delete it.",
   outline: "Drag the bed outline's handles; drag a small handle to add a point; double-click a handle to delete it.",
-  "draw-outline": "Click around the bed edge, then press Enter or Finish.",
+  "draw-outline": "Click around the bed edge, then click the first point, press Enter or Finish. Backspace undoes a point, Esc cancels.",
   "add-drift": "Pick a plant, then click the plan to place a drift of about 5.",
-  "draw-drift": "Pick a plant, click around the drift's shape, then press Enter or Finish.",
-  zone: "Click around a zone (e.g. the shady north end), then press Enter or Finish.",
+  "draw-drift": "Pick a plant, click around the drift's shape, then click the first point, press Enter or Finish. Esc cancels.",
+  zone: "Click around a zone (e.g. the shady north end), then click the first point, press Enter or Finish. Esc cancels.",
   existing: "Click where an existing plant sits to mark it keep or remove.",
 };
 
@@ -54,6 +54,7 @@ export function EditorTab({ data }: { data: BedStateData }) {
   const [tool, setTool] = useState<Tool>(ed.outline.points.length < 3 ? "draw-outline" : "select");
   const [pendingPlant, setPendingPlant] = useState<string | null>(null);
   const [draft, setDraft] = useState<Pt[]>([]);
+  const drawing = tool === "draw-outline" || tool === "draw-drift" || tool === "zone";
   const [hover, setHover] = useState<Pt | null>(null);
   const [opacity, setOpacity] = useState(0.6);
   const [showAerial, setShowAerial] = useState(true);
@@ -129,6 +130,7 @@ export function EditorTab({ data }: { data: BedStateData }) {
       const id = newId("d_");
       ed.commit((cur) => ({ plan: { ...cur.plan, drifts: [...cur.plan.drifts, { id, plantId: plant.id, size: defaultSizeFor(plant), shape: { points: pts, smooth: true } }] } }));
       ed.select({ kind: "drift", id });
+      setTool("select");
     } else if (tool === "zone") {
       const name = window.prompt("Zone name", `Zone ${ed.zones.length + 1}`);
       if (!name) return;
@@ -145,8 +147,14 @@ export function EditorTab({ data }: { data: BedStateData }) {
       if (e.key === "Escape") {
         setDraft([]);
         ed.select(null);
+        if (drawing) setTool("select");
       }
       if (e.key === "Enter") finishDraft();
+      if (e.key === "Backspace" && draft.length) {
+        e.preventDefault();
+        setDraft(draft.slice(0, -1));
+        return;
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && ed.selection?.kind === "drift") {
         const id = ed.selection.id;
         ed.applyOps([{ op: "removeDrift", driftId: id }]);
@@ -155,7 +163,7 @@ export function EditorTab({ data }: { data: BedStateData }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [finishDraft, ed]);
+  }, [finishDraft, ed, draft, drawing]);
 
   // ---- Pointer handling ---------------------------------------------------
 
@@ -164,7 +172,7 @@ export function EditorTab({ data }: { data: BedStateData }) {
     suppressClick.current = true;
     ref.current?.setPointerCapture(e.pointerId);
     const s0 = useEditor.getState();
-    drag.current = { ...d, start: toFt(toSvg(e)), orig: { outline: s0.outline, zones: s0.zones, existing: s0.existing, plan: s0.plan }, started: false } as Drag;
+    drag.current = { ...d, start: toFt(toSvg(e)), orig: { outline: s0.outline, zones: s0.zones, existing: s0.existing, dismissedChecks: s0.dismissedChecks, plan: s0.plan }, started: false } as Drag;
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -208,6 +216,8 @@ export function EditorTab({ data }: { data: BedStateData }) {
     if (tool === "draw-outline" || tool === "draw-drift" || tool === "zone") {
       if (tool === "draw-drift" && !pendingPlant) return;
       if (e.detail === 2) return finishDraft();
+      // Clicking back on the first point closes the shape.
+      if (draft.length >= 3 && Math.hypot(p.x - draft[0].x, p.y - draft[0].y) * s < handleR * 1.5) return finishDraft();
       setDraft([...draft, p]);
       return;
     }
@@ -280,6 +290,8 @@ export function EditorTab({ data }: { data: BedStateData }) {
           <button className={tool === "zone" ? "active" : ""} onClick={() => { setTool("zone"); setDraft([]); }}>Zone</button>
           <button className={tool === "existing" ? "active" : ""} onClick={() => { setTool("existing"); setDraft([]); }}>Existing plant</button>
           {draft.length >= 3 && <button className="primary" onClick={finishDraft}>Finish</button>}
+          {draft.length > 0 && <button onClick={() => setDraft(draft.slice(0, -1))}>Undo point</button>}
+          {drawing && <button onClick={() => { setDraft([]); setTool("select"); }}>Cancel</button>}
           <span style={{ flex: 1 }} />
           <label className="row hint"><input type="checkbox" checked={showCircles} onChange={(e) => setShowCircles(e.target.checked)} /> Spread circles</label>
           {cal && data.project.aerialUrl && (
@@ -341,7 +353,8 @@ export function EditorTab({ data }: { data: BedStateData }) {
           )}
           {draft.map((p, i) => {
             const a = toSheet(p);
-            return <circle key={i} cx={a.x} cy={a.y} r={handleR * 0.8} fill="#fff" stroke="#e0662b" strokeWidth={2} pointerEvents="none" />;
+            const closes = i === 0 && draft.length >= 3 && hover != null && Math.hypot(hover.x - p.x, hover.y - p.y) * s < handleR * 1.5;
+            return <circle key={i} cx={a.x} cy={a.y} r={handleR * (closes ? 1.2 : 0.8)} fill={closes ? "#e0662b" : "#fff"} stroke="#e0662b" strokeWidth={2} pointerEvents="none" />;
           })}
           {tool === "add-drift" && pendingPlant && hover && (() => {
             const plant = plantLibrary.get(pendingPlant)!;
@@ -416,7 +429,7 @@ export function EditorTab({ data }: { data: BedStateData }) {
             <h3>Bed outline</h3>
             <label className="row"><input type="checkbox" checked={!!ed.outline.smooth} onChange={(e) => ed.commit((c) => ({ outline: { ...c.outline, smooth: e.target.checked } }))} /> Curved edges</label>
             <small>{ed.outline.points.length} points · {Math.round(shapeArea(ed.outline))} sq ft</small>
-            <button onClick={() => { ed.commit(() => ({ outline: { points: [] } })); setTool("draw-outline"); }}>Redraw outline</button>
+            <button onClick={() => { setDraft([]); ed.select(null); setTool("draw-outline"); }}>Redraw outline</button>
           </section>
         )}
         <ChecksPanel bed={bed} onHighlight={setHighlight} />
