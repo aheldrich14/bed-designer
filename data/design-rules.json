@@ -17,5 +17,6 @@
   "maxOutsideFraction": 0.2,
   "maxBloomColorsPerMonth": 5,
   "defaultSize": "plug",
+  "gallonMinSpacingIn": 18,
   "sizeForTypes": { "shrub": "1gal", "fern": "1gal" }
 }

@@ -175,7 +175,7 @@ function bloomGaps(ctx: Ctx): Issue[] {
           id: newId("d_"),
           plantId: pick.plant.id,
           size: pick.plant.defaultSize,
-          shape: driftForCount(pick.plant, region.center, rules.preferredDriftCount, rules),
+          shape: driftForCount(pick.plant, region.center, rules.preferredDriftCount, rules, pick.plant.defaultSize),
         };
         ops = [{ op: "addDrift", drift }];
         fix = `Try a drift of ${rules.preferredDriftCount} ${label(pick.plant)} here.`;

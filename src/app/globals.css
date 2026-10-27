@@ -105,10 +105,13 @@ table.schedule tr.sel td { background: var(--accent-soft); }
 .banner.ok { background: var(--accent-soft); color: var(--accent); }
 .banner.err { background: var(--error-soft); color: var(--error); }
 
-.renders { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.renders figure { margin: 0; }
-.renders img { width: 100%; border-radius: 8px; display: block; border: 1px solid var(--line); }
-.renders figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.season-viewer { position: relative; aspect-ratio: 4 / 3; width: min(100%, calc(70vh * 4 / 3)); margin-inline: auto; background: #f2efe7; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.season-viewer img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: opacity 0.35s ease; }
+.season-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; padding: 16px; }
+.season-ticks { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; }
+.season-ticks button { padding: 4px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.season-ticks .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.season-ticks .dot.on { background: #2f7d4f; }
 pre.prompt { white-space: pre-wrap; background: #fbfaf6; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12px; max-height: 260px; overflow: auto; }
 
 .kbd { font-family: ui-monospace, monospace; font-size: 12px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }

@@ -28,7 +28,7 @@ export const ProposalSchema = z.object({
       plantCode: z.string().describe("Library code, e.g. ASC-TUB"),
       u: z.array(z.number()).describe("[u0, u1] along the bed, 0 = left end, 1 = right end, as seen from the front"),
       v: z.array(z.number()).describe("[v0, v1] depth, 0 = back edge, 1 = front edge"),
-      size: z.enum(["plug", "1gal"]).optional(),
+      size: z.enum(["plug", "1gal"]).optional().describe("Omit to use the default: plugs for perennials, grasses and sedges, 1 gal for shrubs and ferns. 1 gal plants are spaced at mature spread, so the same drift takes fewer of them."),
     }),
   ),
 });

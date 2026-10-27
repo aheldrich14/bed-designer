@@ -10,6 +10,14 @@ const rect = (x: number, y: number, w: number, h: number) => ({
 describe("plan math", () => {
   const milkweed = plantLibrary.get("asclepias-tuberosa")!; // 15" spacing
 
+  it("spaces 1-gallon plants at their mature spread, so the same drift takes fewer", () => {
+    const plug: Drift = { id: "a", plantId: milkweed.id, size: "plug", shape: rect(0, 0, 10, 10) };
+    const gallon: Drift = { ...plug, size: "1gal" };
+    // Milkweed: 15" plug spacing, 18" spread. 100 sq ft / (1.5 ft)^2 x 1.15 = 51.
+    expect(driftCount(plug, milkweed)).toBe(74);
+    expect(driftCount(gallon, milkweed)).toBe(51);
+  });
+
   it("derives count from area, spacing and the stagger factor", () => {
     const d: Drift = { id: "a", plantId: milkweed.id, size: "plug", shape: rect(0, 0, 5, 5) };
     // 25 sq ft / (1.25 ft)^2 = 16, x 1.15 = 18.4

@@ -2,7 +2,7 @@ import {
   blob, effectivePoints, pointInPolygon, scaleShapeArea, shapeArea, shapeCentroid, bbox,
 } from "./geometry";
 import { plantLibrary } from "./plants";
-import { rules as defaultRules, type DesignRules } from "./rules";
+import { defaultSizeFor, rules as defaultRules, spacingFor, type DesignRules } from "./rules";
 import type { Drift, Plan, PlanOp, Plant, Pt, PotSize, Shape } from "./types";
 
 let idCounter = 0;
@@ -18,7 +18,7 @@ export function newId(prefix = ""): string {
  */
 export function driftCount(drift: Drift, plant: Plant | undefined, r: DesignRules = defaultRules): number {
   if (!plant) return 0;
-  const s = plant.spacingIn / 12;
+  const s = spacingFor(plant, drift.size, r) / 12;
   const n = (shapeArea(drift.shape) / (s * s)) * r.staggerFactor;
   return Math.max(1, Math.round(n));
 }
@@ -37,7 +37,7 @@ export function plantPositions(drift: Drift, r: DesignRules = defaultRules): Pt[
   const target = driftCount(drift, plant, r);
   const poly = effectivePoints(drift.shape);
   if (poly.length < 3) return [];
-  const base = plant.spacingIn / 12;
+  const base = spacingFor(plant, drift.size, r) / 12;
   const grid = (s: number) => hexGrid(poly, s);
   let lo = base * 0.4;
   let hi = base * 2.5;
@@ -157,7 +157,7 @@ export function emptyPlan(): Plan {
 }
 
 /** A drift big enough for `count` plants of `plant`, centered at `center`. */
-export function driftForCount(plant: Plant, center: Pt, count: number, r: DesignRules = defaultRules): Shape {
-  const s = plant.spacingIn / 12;
+export function driftForCount(plant: Plant, center: Pt, count: number, r: DesignRules = defaultRules, size: PotSize = defaultSizeFor(plant, r)): Shape {
+  const s = spacingFor(plant, size, r) / 12;
   return blob(center, (count * s * s) / r.staggerFactor);
 }

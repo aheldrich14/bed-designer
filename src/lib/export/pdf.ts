@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import SVGtoPDF from "svg-to-pdfkit";
 import { schedule } from "../plan";
-import { MONTHS } from "../rules";
+import { MONTHS, spacingFor } from "../rules";
 import { buildSheet } from "../sheet";
 import { sheetToSvg } from "./svg";
 import { SIZE_LABEL } from "./csv";
@@ -33,7 +33,7 @@ export async function planSheetPdf(project: Project, bed: Bed, plan: Plan, versi
     const p = r.plant;
     doc.rect(lx, ly + 1, 9, 9).fillColor(p.bloomColor).fill();
     doc.fillColor("#24302a").font("Helvetica-Bold").fontSize(9).text(`${p.code}  ${r.quantity}`, lx + 14, ly, { width: 90, lineBreak: false });
-    doc.font("Helvetica").fontSize(9).text(`${SIZE_LABEL[r.size]} · ${p.spacingIn}" o.c.`, lx + lw - 90, ly, { width: 90, align: "right", lineBreak: false });
+    doc.font("Helvetica").fontSize(9).text(`${SIZE_LABEL[r.size]} · ${spacingFor(p, r.size)}" o.c.`, lx + lw - 90, ly, { width: 90, align: "right", lineBreak: false });
     doc.font("Helvetica-Oblique").fontSize(8.5).fillColor("#4b554f").text(`${p.botanical} — ${p.common}`, lx + 14, ly + 11, { width: lw - 14, lineBreak: false, ellipsis: true });
     doc.font("Helvetica").fontSize(8).fillColor("#6b7568").text(
       `${p.heightIn}" tall · ${p.bloomMonths.length ? `blooms ${MONTHS[p.bloomMonths[0] - 1]}–${MONTHS[p.bloomMonths[p.bloomMonths.length - 1] - 1]}, ${p.bloomColorName}` : "foliage"}`,
@@ -74,7 +74,7 @@ export async function planSheetPdf(project: Project, bed: Bed, plan: Plan, versi
     }
     const p = r.plant;
     drawRow([
-      p.code, p.botanical, p.common, SIZE_LABEL[r.size], String(r.quantity), `${p.spacingIn}" o.c.`, `${p.heightIn}"`,
+      p.code, p.botanical, p.common, SIZE_LABEL[r.size], String(r.quantity), `${spacingFor(p, r.size)}" o.c.`, `${p.heightIn}"`,
       p.bloomMonths.length ? `${MONTHS[p.bloomMonths[0] - 1]}–${MONTHS[p.bloomMonths[p.bloomMonths.length - 1] - 1]} (${p.bloomColorName})` : "—",
       `${p.sun.join("/")} · ${p.moisture.join("/")}`,
     ]);
