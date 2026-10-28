@@ -110,7 +110,7 @@ export function sitePlanSheet(
   bed: Bed,
   plan: Plan,
   project: Project | null,
-  opts: { month?: number | null; aerialHref?: string | null; width?: number } = {},
+  opts: { month?: number | null; aerialHref?: string | null; width?: number; gapLines?: boolean } = {},
 ): Sheet {
   const gaps = siteGaps(bed, project);
   const cal = project?.calibration;
@@ -131,6 +131,8 @@ export function sitePlanSheet(
   const { s, ox, oy } = sheet;
   const X = (x: number) => ox + x * s;
   const Y = (y: number) => oy + y * s;
+  // Image models copy dashed callouts into the photo, so renders ask for the plan without them.
+  if (opts.gapLines === false) return sheet;
   for (const g of gaps) {
     if (g.gapFt < 1 || g.kind === "house") continue;
     const a = { x: X(g.onBed.x), y: Y(g.onBed.y) };

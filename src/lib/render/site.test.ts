@@ -53,7 +53,8 @@ describe("site scale for renders", () => {
     expect(prompt).toContain("No existing plants stay.");
     // Image models can't count plants; drifts read as density instead.
     expect(prompt).not.toMatch(/a drift of \d+/);
-    expect(prompt.split("\n").at(-1)).toMatch(/none taller than/);
+    expect(prompt.split("\n").at(-1)).toMatch(/no perennial taller than/);
+    expect(prompt).toContain("Do not copy anything from image 2");
   });
 
   it("clears the bed in its own pass, then plants the cleared photo", () => {
@@ -61,10 +62,30 @@ describe("site scale for renders", () => {
     expect(clear).toContain("Remove every plant growing inside it");
     expect(clear).toContain("shredded hardwood mulch");
     expect(clear).toContain("about 12' from the bed edge");
+    expect(clear).toMatch(/hedge or row of clipped shrubs along the house foundation/);
+    expect(clear).not.toContain("planting drifts colored");
     const plant = buildRenderPrompt(zoned, plan, 7, "street", { project, sitePlan: true, cleared: true });
     expect(plant).toContain("has already been cleared to bare shredded hardwood mulch");
     expect(plant).not.toContain("No existing plants stay.");
     expect(plant.indexOf("Keep") < plant.indexOf("Planting, left to right")).toBe(true);
+  });
+
+  it("keeps a few tall shrubs from setting the scale for the whole bed", () => {
+    const dogwood = { ...plan.drifts[0], id: "dogwood", plantId: "cornus-sericea" };
+    const withShrub = { ...plan, drifts: [...plan.drifts, dogwood] };
+    const prompt = buildRenderPrompt(zoned, withShrub, 7, "street", { project, cleared: true });
+    expect(prompt).toMatch(/The tallest perennials are about 5' tall/);
+    expect(prompt).toMatch(/only plants taller than that are the Red osier dogwood shrubs, about 6' tall/);
+    expect(prompt).not.toMatch(/to 6' across/);
+    expect(prompt.split("\n").at(-1)).toMatch(/no perennial taller than 5'/);
+    // With every perennial at 4' or under, the door and windows give a check the model can see.
+    const short = { ...withShrub, drifts: withShrub.drifts.filter((d) => d.plantId !== "eutrochium-maculatum") };
+    expect(buildRenderPrompt(zoned, short, 7, "street", { project, cleared: true })).toContain("front door, porch and ground-floor windows stay clearly visible above them, except right behind a shrub");
+  });
+
+  it("drops the gap callouts from the plan sent to the image model", () => {
+    const svg = sheetToSvg(sitePlanSheet(zoned, plan, project, { month: 7, gapLines: false }));
+    expect(svg).not.toContain("12' gap");
   });
 
   it("matches the photo's aspect ratio", () => {

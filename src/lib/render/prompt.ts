@@ -124,38 +124,60 @@ const planPlants = (plan: Plan) => plan.drifts.map((d) => plantLibrary.get(d.pla
 /**
  * Height cues tied to things at the same distance from the camera. Plants at
  * the front of a deep bed sit far closer to the lens than the house, so
- * comparing them to the door makes the model draw them too big.
+ * comparing them to the door makes the model draw them too big. Shrubs are
+ * called out on their own so a few tall ones don't set the scale for the
+ * whole bed.
  */
 function scaleLines(bed: Bed, plan: Plan, month: number, project: Project | null | undefined): string[] {
   const plants = planPlants(plan);
   if (!plants.length) return [];
-  const heights = plants.map((p) => heightNow(p, month)).sort((a, b) => a - b);
-  const spreads = plants.map((p) => p.spreadIn).sort((a, b) => a - b);
+  const perennials = plants.filter((p) => p.type !== "shrub");
+  const shrubs = [...new Map(plants.filter((p) => p.type === "shrub").map((p) => [p.id, p])).values()];
+  const base = perennials.length ? perennials : plants;
+  const heights = base.map((p) => heightNow(p, month)).sort((a, b) => a - b);
+  const spreads = base.map((p) => p.spreadIn).sort((a, b) => a - b);
   const [low, high] = [heights[0], heights[heights.length - 1]];
   const lines = [
     "Plant size: judge each plant against things at the same distance from the camera, not against the house behind the bed.",
     `- The shortest plants, along the front edge nearest the camera, are about ${formatFtIn(low / 12)} tall: ${onAnAdult(low)} on an adult standing on the walk.`,
-    `- The tallest plants are about ${formatFtIn(high / 12)} tall: ${onAnAdult(high)} on an adult. Nothing in the bed is taller than that.`,
+    `- The tallest ${perennials.length && shrubs.length ? "perennials" : "plants"} are about ${formatFtIn(high / 12)} tall: ${onAnAdult(high)} on an adult.${perennials.length && shrubs.length ? "" : " Nothing in the bed is taller than that."}`,
   ];
+  if (perennials.length && shrubs.length) {
+    const shrubHigh = Math.max(...shrubs.map((p) => heightNow(p, month)));
+    lines.push(`- The only plants taller than that are the ${shrubs.map((p) => p.common).join(" and ")} shrubs, about ${formatFtIn(shrubHigh / 12)} tall, each one a separate shrub, never a hedge.`);
+  }
   const house = siteGaps(bed, project).find((g) => g.kind === "house");
+  if (house && house.gapFt < 6 && high <= 54) {
+    lines.push(
+      `- Seen from the street, the back-row plants cover only the house foundation and the bottom of any porch railing. The front door, porch and ground-floor windows stay clearly visible above them${shrubs.length && perennials.length ? ", except right behind a shrub" : ""}.`,
+    );
+  }
   if (house && house.gapFt < 3) {
     const share = high / 12 / DOOR_FT;
     const words = share < 0.3 ? "well under half" : share < 0.6 ? "about half" : share < 0.85 ? "about two thirds" : "nearly all";
-    lines.push(`- At the back, against the house, the tallest plants reach ${words} the height of the ${DOOR_FT} ft front door.`);
+    lines.push(`- At the back, against the house, the tallest ${perennials.length && shrubs.length ? "perennials" : "plants"} reach ${words} the height of the ${DOOR_FT} ft front door.`);
   }
   const across = spreads[0] === spreads[spreads.length - 1] ? formatFtIn(spreads[0] / 12) : `${formatFtIn(spreads[0] / 12)} to ${formatFtIn(spreads[spreads.length - 1] / 12)}`;
-  lines.push(`- Each plant is only ${across} across. A drift is many of these small, separate plants massed together, not one large bush.`);
+  lines.push(`- Each ${perennials.length && shrubs.length ? "perennial" : "plant"} is only ${across} across. A drift is many of these small, separate plants massed together, not one large bush.`);
   return lines;
 }
 
-function imagesLine(viewpoint: "street" | "overhead", sitePlan: boolean | undefined): string {
+/** Tallest non-shrub height this month, in inches; the closing size rule. */
+function tallestPerennial(plan: Plan, month: number): number {
+  if (isDormant(month)) return 0;
+  const plants = planPlants(plan);
+  const perennials = plants.filter((p) => p.type !== "shrub");
+  return Math.max(0, ...(perennials.length ? perennials : plants).map((p) => heightNow(p, month)));
+}
+
+function imagesLine(viewpoint: "street" | "overhead", sitePlan: boolean | undefined, drifts = true): string {
   if (viewpoint === "overhead") {
     return sitePlan
       ? "Image 1 is an aerial photo of the property. Image 2 is a to-scale site plan of the same area (north up, dimensions in feet) with the bed outlined in brown and its planting drifts colored. Match the bed's size, shape and position to image 2 exactly."
       : "Use the attached aerial image for context.";
   }
   return sitePlan
-    ? "Image 2 is a to-scale overhead site plan of the same yard (north up, dimensions in feet): the bed outline is drawn in brown with its planting drifts colored, the house in dark gray, walks and drive in light gray, and orange dashed lines mark measured gaps. Use image 2 only to judge the bed's true size and where it sits relative to the house, walk and lawn; do not draw the plan, its labels or its colors into the photo."
+    ? `Image 2 is a to-scale overhead site plan of the same yard (north up, dimensions in feet): the bed outline is drawn in brown${drifts ? " with its planting drifts colored" : ""}, the house in dark gray, walks and drive in light gray. Use image 2 only to judge the bed's true size and where it sits relative to the house, walk and lawn. Do not copy anything from image 2 into the photo: no outlines, lines, dashes, numbers, labels or plan colors.`
     : "";
 }
 
@@ -174,10 +196,11 @@ export function buildClearPrompt(bed: Bed, opts: RenderPromptOptions = {}): stri
   const site = describeSite(bed, opts.project);
   return [
     `Edit image 1, a street-level photo of a house. ${KEEP_SCENE}`,
-    imagesLine("street", opts.sitePlan),
+    imagesLine("street", opts.sitePlan, false),
     `The change: clear the ${bed.name.toLowerCase()} (about ${Math.round(W)} ft long and ${Math.round(D)} ft deep, facing ${bed.conditions.orientation}). Remove every plant growing inside it: shrubs, including rounded evergreen shrubs like boxwood or yew, perennials, grasses, groundcovers and weeds${remove.length ? `, including the ${remove.join(", ")}` : ""}.`,
     keep.length ? `The only existing plants that stay are: ${keep.join(", ")}; leave them exactly as they are.` : "",
-    "Show the whole bed as freshly spread, dark brown shredded hardwood mulch with a clean edge where it meets the lawn. Keep the bed's edges where they are now.",
+    "Any hedge or row of clipped shrubs along the house foundation or porch is inside the bed: remove it completely, roots and all, so the house foundation and the base of the porch show behind bare ground.",
+    "Show the whole bed, from the house foundation out to its front edge, as freshly spread, dark brown shredded hardwood mulch with a clean edge where it meets the lawn. Keep the bed's edges where they are now.",
     site.length ? "Bed placement, measured on the site plan:" : "",
     ...site.map((l) => `- ${l}`),
     "Photorealistic, natural daylight, same lens and perspective as image 1. No text, labels or people.",
@@ -213,21 +236,21 @@ export function buildRenderPrompt(bed: Bed, plan: Plan, month: number, viewpoint
 
   // Order matters: what to preserve first, then the bed, then sizes and planting, with the size rule repeated last.
   const bedState = opts.cleared
-    ? `In image 1 the ${bed.name.toLowerCase()} (${size}) has already been cleared to bare shredded hardwood mulch. Plant only inside that mulched area and keep its edges where they are. Do not add shrubs or bring back any plants that were removed.`
+    ? `In image 1 the ${bed.name.toLowerCase()} (${size}) has already been cleared to bare shredded hardwood mulch. Plant only inside that mulched area and keep its edges where they are. If any hedge or old shrub is still standing along the house or porch, remove it; the new plants grow from the mulch at ground level, never on top of or behind an old hedge. Do not bring back any plants that were removed.`
     : `The change: replant the ${bed.name.toLowerCase()} (${size}) and keep its edges where they are. First remove every shrub, perennial, groundcover and weed now growing inside the bed${remove.length ? `, including the ${remove.join(", ")}` : ""}. ${keep.length ? `The only existing plants that stay are: ${keep.join(", ")}; leave them exactly as they are.` : "No existing plants stay."}`;
-  const tallest = isDormant(month) ? 0 : Math.max(0, ...planPlants(plan).map((p) => heightNow(p, month)));
+  const tallest = tallestPerennial(plan, month);
   return [
     `Edit image 1, a street-level photo of a house, to show its front bed as a native perennial garden. ${KEEP_SCENE}`,
     imagesLine("street", opts.sitePlan),
     bedState,
-    site.length ? "Bed placement, measured on the site plan:" : "",
+    site.length ? (opts.sitePlan ? "Bed placement, measured on the site plan:" : "Bed placement, as measured:") : "",
     ...site.map((l) => `- ${l}`),
     ...scale,
     `Month: ${MONTH_NAMES[month - 1]}. ${SEASON[month]}`,
     "Plants grow in naturalistic, interlocking drifts with shredded hardwood mulch showing between them; tallest plants at the back, shortest along the front edge.",
     "Planting, left to right as seen from the street:",
     ...layout,
-    `Photorealistic, natural daylight, same lens and perspective as image 1. No text, labels or people. Keep every plant at its true size${tallest ? `, none taller than ${formatFtIn(tallest / 12)}` : ""}, and keep the house exactly as it is in image 1.`,
+    `Photorealistic, natural daylight, same lens and perspective as image 1. No text, labels or people. Keep every plant at its true size${tallest ? `, no perennial taller than ${formatFtIn(tallest / 12)}` : ""}, and keep the house exactly as it is in image 1.`,
   ]
     .filter(Boolean)
     .join("\n");
