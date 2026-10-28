@@ -185,10 +185,10 @@ export function applySuggestion(id: string) {
 }
 
 /** PNG of the to-scale overhead site plan, with the aerial underneath when there is one. */
-export async function sitePlanPng(bed: Bed, plan: Plan, project: Project, month: number | null): Promise<Buffer> {
+export async function sitePlanPng(bed: Bed, plan: Plan, project: Project, month: number | null, opts: { gapLines?: boolean } = {}): Promise<Buffer> {
   const aerial = project.aerialUrl ? await fileStore.read(project.aerialUrl) : null;
   const aerialHref = aerial ? `data:${aerial.contentType};base64,${aerial.data.toString("base64")}` : null;
-  const sheet = sitePlanSheet(bed, plan, project, { month, aerialHref, width: 1200 });
+  const sheet = sitePlanSheet(bed, plan, project, { month, aerialHref, width: 1200, gapLines: opts.gapLines });
   return svgToPng(sheetToSvg(sheet), sheet.width);
 }
 
@@ -199,20 +199,21 @@ const CLEARED_MONTH = 0;
 export function renderPromptPreview(bed: Bed, plan: Plan, month: number, viewpoint: "street" | "overhead", project: Project | null): string {
   const opts = { project, sitePlan: true };
   if (viewpoint === "overhead") return buildRenderPrompt(bed, plan, month, viewpoint, opts);
-  return `Pass 1, clear the bed:\n${buildClearPrompt(bed, opts)}\n\nPass 2, plant it:\n${buildRenderPrompt(bed, plan, month, viewpoint, { ...opts, cleared: true })}`;
+  return `Pass 1, clear the bed:\n${buildClearPrompt(bed, opts)}\n\nPass 2, plant it:\n${buildRenderPrompt(bed, plan, month, viewpoint, { project, cleared: true })}`;
 }
 
 /**
  * Pass 1 of a street render: the photo with the bed emptied to mulch, cached per
- * plan version. Returns null when it fails, so the caller can render in one pass.
+ * plan version and clearing prompt. Returns null when it fails, so the caller can render in one pass.
  */
 async function clearedPhoto(bed: Bed, version: PlanVersion, project: Project, photo: RenderImage, sitePlan: RenderImage | null, aspectRatio: string | undefined, force: boolean): Promise<RenderImage | null> {
+  const prompt = buildClearPrompt(bed, { project, sitePlan: !!sitePlan });
+  // A changed clearing prompt (bed edits, prompt tuning) invalidates the cached photo.
   const cached = repo.findRender(version.id, CLEARED_MONTH, "street");
-  if (cached?.imageUrl && !force) {
+  if (cached?.imageUrl && !force && cached.prompt === prompt) {
     const file = await fileStore.read(cached.imageUrl);
     if (file) return { data: file.data, mimeType: file.contentType };
   }
-  const prompt = buildClearPrompt(bed, { project, sitePlan: !!sitePlan });
   try {
     const out = await renderProvider.render({ prompt, images: sitePlan ? [photo, sitePlan] : [photo], aspectRatio });
     const url = await fileStore.save("renders", out.data, extFor(out.mimeType));
@@ -245,18 +246,23 @@ export async function renderMonth(bedId: string, versionId: string, month: numbe
   // Match the photo's shape so the model edits it instead of reframing the scene.
   const aspectRatio = photo ? nearestAspectRatio(photo.data) : undefined;
   // The to-scale overhead plan tells the model how big the bed is and how far it sits from the house and walk.
-  let sitePlan: RenderImage | null = null;
-  try {
-    sitePlan = { data: await sitePlanPng(bed, version, project, month), mimeType: "image/png" };
-  } catch (e) {
-    console.error("Site plan image failed; rendering without it.", e);
-  }
-  // Street renders go in two passes: clear the bed, then plant the cleared photo.
+  // Without the dashed gap callouts, which image models copy into the photo; the prompt carries those numbers.
+  const planImage = async (p: Plan): Promise<RenderImage | null> => {
+    try {
+      return { data: await sitePlanPng(bed, p, project, month, { gapLines: false }), mimeType: "image/png" };
+    } catch (e) {
+      console.error("Site plan image failed; rendering without it.", e);
+      return null;
+    }
+  };
+  // Street renders go in two passes: clear the bed, then plant the cleared photo. The clearing pass sees an
+  // empty plan so it has no planting to draw; the planting pass needs no plan, since the mulch marks the bed.
   let cleared = false;
   if (viewpoint === "street" && photo) {
-    const empty = await clearedPhoto(bed, version, project, photo, sitePlan, aspectRatio, force);
+    const empty = await clearedPhoto(bed, version, project, photo, await planImage({ ...version, drifts: [] }), aspectRatio, force);
     if (empty) [photo, cleared] = [empty, true];
   }
+  const sitePlan = cleared ? null : await planImage(version);
   const prompt = buildRenderPrompt(bed, version, month, viewpoint, { project, sitePlan: !!sitePlan, cleared });
   const images = [photo, sitePlan].filter((img): img is RenderImage => !!img);
   try {
